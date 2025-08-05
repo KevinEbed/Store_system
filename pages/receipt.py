@@ -79,39 +79,58 @@ def parse_timestamp_column(df, col_name="timestamp"):
         df["parsed_ts"] = pd.NaT
         return df
 
-    # First attempt with expected format to avoid ambiguous parsing
-    parsed = pd.to_datetime(df[col_name], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+    raw = df[col_name]
 
-    # If all failed, fallback to generic coercion (more permissive)
+    # 1. Try strict expected format
+    parsed = pd.to_datetime(raw, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+
+    # 2. If all failed, try generic coercion
     if parsed.isna().all():
-        parsed = pd.to_datetime(df[col_name], errors="coerce")
+        parsed = pd.to_datetime(raw, errors="coerce")
 
+    # 3. If still all NaT and values look numeric, attempt epoch interpretation
+    if parsed.isna().all():
+        def try_epoch(val):
+            try:
+                num = float(val)
+            except Exception:
+                return pd.NaT
+            # heuristic: if large (ms) vs seconds
+            if num > 1e12:  # likely milliseconds
+                return pd.to_datetime(num / 1000, unit="s", errors="coerce")
+            elif num > 1e9:  # seconds
+                return pd.to_datetime(num, unit="s", errors="coerce")
+            else:
+                return pd.NaT
+
+        parsed = raw.apply(try_epoch)
+        parsed = pd.to_datetime(parsed, errors="coerce")  # normalize
     df["parsed_ts"] = parsed
     return df
 
 orders_df = parse_timestamp_column(orders_df, "timestamp")
 
-# Safely derive date column if parsed_ts is datetime-like
+# Safely derive date column
 if pd.api.types.is_datetime64_any_dtype(orders_df["parsed_ts"]):
     orders_df["date"] = orders_df["parsed_ts"].dt.date
 else:
-    # Coerce to datetime anyway to keep consistency then extract date if possible
-    try:
-        orders_df["parsed_ts"] = pd.to_datetime(orders_df["parsed_ts"], errors="coerce")
+    # attempt coercion once more
+    orders_df["parsed_ts"] = pd.to_datetime(orders_df["parsed_ts"], errors="coerce")
+    if pd.api.types.is_datetime64_any_dtype(orders_df["parsed_ts"]):
         orders_df["date"] = orders_df["parsed_ts"].dt.date
-    except Exception:
-        orders_df["date"] = None  # everything will be treated as missing
+    else:
+        orders_df["date"] = None  # will be treated as missing
 
 # Feedback on parsing
 if orders_df["parsed_ts"].isna().all():
     st.error("Timestamp conversion failed for all rows. Check 'timestamp' column values.")
     if "timestamp" in orders_df.columns:
-        st.write("Sample problematic timestamp values:", orders_df["timestamp"].unique()[:10])
+        st.write("Sample raw timestamp values:", orders_df["timestamp"].unique()[:10])
 else:
     bad_ts = orders_df[orders_df["parsed_ts"].isna()]
     if not bad_ts.empty:
         st.warning(f"{len(bad_ts)} row(s) have unparsable timestamps and will be excluded from daily totals.")
-        st.write("Example invalid timestamps:", bad_ts["timestamp"].unique()[:10])
+        st.write("Example invalid timestamp values:", bad_ts["timestamp"].unique()[:10])
 
 # --- Daily totals --- #
 daily_totals_df = (
