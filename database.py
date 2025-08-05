@@ -9,51 +9,54 @@ def get_connection():
 
 def init_db():
     conn = get_connection()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT,
-        size TEXT,
-        price INTEGER NOT NULL,
-        quantity INTEGER NOT NULL
-    )
-    """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            category TEXT,
+            size TEXT,
+            price INTEGER NOT NULL,
+            quantity INTEGER NOT NULL
+        )
+        """)
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        total INTEGER NOT NULL
-    )
-    """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            total INTEGER NOT NULL
+        )
+        """)
 
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id INTEGER,
-        product_id INTEGER,
-        name TEXT,
-        price INTEGER,
-        quantity INTEGER,
-        FOREIGN KEY(order_id) REFERENCES orders(id),
-        FOREIGN KEY(product_id) REFERENCES products(id)
-    )
-    """)
-
-    conn.commit()
-    conn.close()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER,
+            product_id INTEGER,
+            name TEXT,
+            price INTEGER,
+            quantity INTEGER,
+            FOREIGN KEY(order_id) REFERENCES orders(id),
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
 
 # ------------------ Product Functions ------------------ #
 def get_products():
     conn = get_connection()
-    cursor = conn.execute("SELECT * FROM products")
-    rows = cursor.fetchall()
-    conn.close()
-    columns = ["id", "name", "category", "size", "price", "quantity"]
-    return [dict(zip(columns, row)) for row in rows]
+    try:
+        cursor = conn.execute("SELECT * FROM products")
+        rows = cursor.fetchall()
+        columns = ["id", "name", "category", "size", "price", "quantity"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
 
 def update_product_quantity(product_id, qty_sold):
     conn = get_connection()
@@ -66,6 +69,7 @@ def update_product_quantity(product_id, qty_sold):
         conn.commit()
     except Exception as e:
         print("❌ Error updating quantity:", e)
+        conn.rollback()
         raise
     finally:
         conn.close()
@@ -89,6 +93,10 @@ def bulk_upload_products(df, overwrite=False):
             """, (int(row["id"]), row["name"], row.get("category", ""), row.get("size", ""),
                   int(row["price"]), int(row["quantity"])))
         conn.commit()
+    except Exception as e:
+        print("❌ Error in bulk upload:", e)
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -107,6 +115,7 @@ def save_order(cart, total_amount):
                 INSERT INTO order_items (order_id, product_id, name, price, quantity)
                 VALUES (?, ?, ?, ?, ?)
             """, (order_id, item["id"], item["name"], item["price"], item["quantity"]))
+
             update_product_quantity(item["id"], item["quantity"])
 
         conn.commit()
@@ -120,19 +129,23 @@ def save_order(cart, total_amount):
 
 def get_order_history():
     conn = get_connection()
-    cursor = conn.execute("SELECT id, timestamp, total FROM orders ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    columns = ["id", "timestamp", "total"]
-    return [dict(zip(columns, row)) for row in rows]
+    try:
+        cursor = conn.execute("SELECT id, timestamp, total FROM orders ORDER BY id DESC")
+        rows = cursor.fetchall()
+        columns = ["id", "timestamp", "total"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
 
 def get_order_items(order_id):
     conn = get_connection()
-    cursor = conn.execute(
-        "SELECT product_id, name, price, quantity FROM order_items WHERE order_id = ?",
-        (order_id,)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    columns = ["product_id", "name", "price", "quantity"]
-    return [dict(zip(columns, row)) for row in rows]
+    try:
+        cursor = conn.execute(
+            "SELECT product_id, name, price, quantity FROM order_items WHERE order_id = ?",
+            (order_id,)
+        )
+        rows = cursor.fetchall()
+        columns = ["product_id", "name", "price", "quantity"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
