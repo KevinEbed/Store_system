@@ -60,16 +60,17 @@ def update_product_quantity(product_id, qty_sold):
     try:
         cur = conn.cursor()
 
-        # 🧪 Print what you're updating
-        print(f"🧪 Updating Product ID: {product_id}, Qty Sold: {qty_sold}")
-        print(f"🧪 Type: ID={type(product_id)}, Qty={type(qty_sold)}")
+        # ✅ Print for debugging
+        print("🔧 update_product_quantity() called with:")
+        print("   product_id:", product_id, type(product_id))
+        print("   qty_sold:", qty_sold, type(qty_sold))
 
-        # Confirm product exists
+        # Optional: Check if product exists
         cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
         result = cur.fetchone()
-        print("🧪 Current Quantity in DB:", result)
+        print("   Current quantity in DB:", result)
 
-        # 💥 The UPDATE that fails
+        # 🔥 The line causing issues
         cur.execute(
             "UPDATE products SET quantity = quantity - ? WHERE id = ?",
             (int(qty_sold), int(product_id))
@@ -77,7 +78,7 @@ def update_product_quantity(product_id, qty_sold):
 
         conn.commit()
     except Exception as e:
-        print("❌ UPDATE ERROR:", e)
+        print("❌ EXCEPTION in update_product_quantity:", e)
         raise
     finally:
         conn.close()
