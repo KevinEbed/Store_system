@@ -73,21 +73,34 @@ orders_df["total"] = orders_df["total_from_items"].where(
 orders_df.drop(columns=["total_from_items"], inplace=True)
 
 # --- Parse timestamp to date for daily aggregation --- #
-def safe_parse_datetime(s):
-    try:
-        return pd.to_datetime(s, format="%Y-%m-%d %H:%M:%S", errors="coerce")
-    except Exception as e:
-        st.warning(f"Failed to parse timestamp '{s}': {e}")
-        return pd.NaT
+def parse_timestamp_column(df, col_name="timestamp"):
+    if col_name not in df.columns:
+        st.error(f"Orders table is missing the '{col_name}' column.")
+        df["parsed_ts"] = pd.NaT
+        return df
 
-if "timestamp" not in orders_df.columns:
-    st.error("Orders table is missing the 'timestamp' column.")
-    orders_df["parsed_ts"] = pd.NaT
+    # First attempt with expected format to avoid ambiguous parsing
+    parsed = pd.to_datetime(df[col_name], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+
+    # If all failed, fallback to generic coercion (more permissive)
+    if parsed.isna().all():
+        parsed = pd.to_datetime(df[col_name], errors="coerce")
+
+    df["parsed_ts"] = parsed
+    return df
+
+orders_df = parse_timestamp_column(orders_df, "timestamp")
+
+# Safely derive date column if parsed_ts is datetime-like
+if pd.api.types.is_datetime64_any_dtype(orders_df["parsed_ts"]):
+    orders_df["date"] = orders_df["parsed_ts"].dt.date
 else:
-    orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
-
-# Always create date column (can be NaT)
-orders_df["date"] = orders_df["parsed_ts"].dt.date
+    # Coerce to datetime anyway to keep consistency then extract date if possible
+    try:
+        orders_df["parsed_ts"] = pd.to_datetime(orders_df["parsed_ts"], errors="coerce")
+        orders_df["date"] = orders_df["parsed_ts"].dt.date
+    except Exception:
+        orders_df["date"] = None  # everything will be treated as missing
 
 # Feedback on parsing
 if orders_df["parsed_ts"].isna().all():
