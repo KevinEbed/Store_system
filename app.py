@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 import time
-import sqlite3
 from datetime import datetime
 from database import init_db, get_products, save_order, get_connection
 
@@ -17,14 +16,17 @@ if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 
 def reload_products():
-    st.write("🔄 Reloading products from database...")
+    # Explicit reload helper (called on demand or after checkout)
     return get_products()
 
-# ------------------ Retake Previous Order UI ------------------ #
-with st.expander("🕘 Retake Previous Order", expanded=True):
+# ------------------ Manual Refresh ------------------ #
+if st.button("🔄 Refresh Products"):
+    st.experimental_rerun()
+
+# ------------------ Retake Previous Order UI (optional) ------------------ #
+with st.expander("🕘 Retake Previous Order", expanded=False):
     col1, col2 = st.columns([3, 1])
     with col1:
-        # Fetch recent orders
         conn = get_connection()
         orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC LIMIT 50", conn)
         order_ids = orders_df["id"].tolist()
@@ -34,14 +36,12 @@ with st.expander("🕘 Retake Previous Order", expanded=True):
             selected_order = None
             st.info("No previous orders found.")
 
-        if selected_order:
-            # Show order summary
+        if selected_order is not None:
             order_row = orders_df[orders_df["id"] == selected_order].iloc[0]
             st.markdown(f"**Order ID:** {order_row['id']}")
             st.markdown(f"**Timestamp:** {order_row['timestamp']}")
             st.markdown(f"**Total:** {order_row['total']} EGP")
 
-            # Load items
             items_df = pd.read_sql_query(
                 "SELECT product_id AS id, name, price, quantity FROM order_items WHERE order_id = ?",
                 conn,
@@ -52,7 +52,6 @@ with st.expander("🕘 Retake Previous Order", expanded=True):
             st.dataframe(items_df, use_container_width=True)
 
             if st.button("🔁 Load this order into cart"):
-                # Replace cart with this order's items
                 new_cart = {}
                 for _, row in items_df.iterrows():
                     new_cart[int(row["id"])] = {
@@ -65,7 +64,7 @@ with st.expander("🕘 Retake Previous Order", expanded=True):
                 st.success(f"Loaded order {selected_order} into cart.")
                 st.experimental_rerun()
     with col2:
-        if st.button("🔄 Refresh Products / Orders"):
+        if st.button("🔄 Refresh Orders/Retake UI"):
             st.experimental_rerun()
     conn.close()
 
@@ -79,7 +78,6 @@ for i, item in enumerate(products):
     with cols[i % 4]:
         st.markdown(f"### {item['name']}")
 
-        # Safe image loading with fallback
         image_path = f"data/images/{item['id']}.jpg"
         if os.path.exists(image_path):
             st.image(image_path, use_container_width=True)
@@ -90,7 +88,6 @@ for i, item in enumerate(products):
             else:
                 st.markdown("🖼 No image")
 
-        # Calculate available stock after items already in cart
         in_cart_qty = st.session_state.cart.get(item["id"], {}).get("quantity", 0)
         available_stock = item["quantity"] - in_cart_qty
         if available_stock < 0:
@@ -146,7 +143,6 @@ if st.session_state.cart:
             current_products = reload_products()
             existing_ids = {p["id"] for p in current_products}
 
-            # Validate product existence
             missing = []
             for item in st.session_state.cart.values():
                 if item["id"] not in existing_ids:
@@ -182,6 +178,9 @@ if st.session_state.cart:
                     st.markdown(f"- 💰 Total: `{total} EGP`")
                     st.markdown(f"- 🕒 Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                     st.session_state.cart = {}
-                st.session_state.checkout_in_progress = False
+                    st.session_state.checkout_in_progress = False
+                    st.experimental_rerun()  # reload to reflect new stock
+                else:
+                    st.session_state.checkout_in_progress = False
 else:
     st.info("🛒 Cart is empty.")
