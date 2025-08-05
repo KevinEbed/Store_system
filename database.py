@@ -60,24 +60,28 @@ def update_product_quantity(product_id, qty_sold):
     try:
         cur = conn.cursor()
 
-        # Check if product exists
+        # 🧪 Print what you're updating
+        print(f"🧪 Updating Product ID: {product_id}, Qty Sold: {qty_sold}")
+        print(f"🧪 Type: ID={type(product_id)}, Qty={type(qty_sold)}")
+
+        # Confirm product exists
         cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
         result = cur.fetchone()
-        if result is None:
-            raise ValueError(f"❌ Product ID {product_id} not found in database.")
+        print("🧪 Current Quantity in DB:", result)
 
-        current_qty = result[0]
-        if current_qty < qty_sold:
-            raise ValueError(f"❌ Not enough stock for product {product_id}. Requested {qty_sold}, available {current_qty}.")
-
+        # 💥 The UPDATE that fails
         cur.execute(
             "UPDATE products SET quantity = quantity - ? WHERE id = ?",
             (int(qty_sold), int(product_id))
         )
 
         conn.commit()
+    except Exception as e:
+        print("❌ UPDATE ERROR:", e)
+        raise
     finally:
         conn.close()
+
 
 def bulk_upload_products(df, overwrite=False):
     """
