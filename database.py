@@ -3,7 +3,7 @@ from datetime import datetime
 
 DB_NAME = "store.db"
 
-# ------------------ Connection Helpers ------------------ #
+# ------------------ DB Connection ------------------ #
 def get_connection():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
 
@@ -59,42 +59,23 @@ def update_product_quantity(product_id, qty_sold):
     conn = get_connection()
     try:
         cur = conn.cursor()
-
-        # ✅ Print for debugging
-        print("🔧 update_product_quantity() called with:")
-        print("   product_id:", product_id, type(product_id))
-        print("   qty_sold:", qty_sold, type(qty_sold))
-
-        # Optional: Check if product exists
-        cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
-        result = cur.fetchone()
-        print("   Current quantity in DB:", result)
-
-        # 🔥 The line causing issues
         cur.execute(
             "UPDATE products SET quantity = quantity - ? WHERE id = ?",
             (int(qty_sold), int(product_id))
         )
-
         conn.commit()
     except Exception as e:
-        print("❌ EXCEPTION in update_product_quantity:", e)
+        print("❌ Error updating quantity:", e)
         raise
     finally:
         conn.close()
 
-
 def bulk_upload_products(df, overwrite=False):
-    """
-    df: pandas DataFrame with columns [id, name, category, size, price, quantity]
-    overwrite: if True, existing product table is cleared before insert
-    """
     conn = get_connection()
     try:
         c = conn.cursor()
         if overwrite:
             c.execute("DELETE FROM products")
-        # Insert or replace so that if an ID exists and not overwriting, it updates
         for _, row in df.iterrows():
             c.execute("""
                 INSERT INTO products (id, name, category, size, price, quantity)
@@ -105,27 +86,20 @@ def bulk_upload_products(df, overwrite=False):
                     size=excluded.size,
                     price=excluded.price,
                     quantity=excluded.quantity
-            """, (int(row["id"]), row["name"], row.get("category", ""), row.get("size", ""), int(row["price"]), int(row["quantity"])))
+            """, (int(row["id"]), row["name"], row.get("category", ""), row.get("size", ""),
+                  int(row["price"]), int(row["quantity"])))
         conn.commit()
     finally:
         conn.close()
 
 # ------------------ Order Functions ------------------ #
 def save_order(cart, total_amount):
-    """
-    cart: list of items, each with keys id, name, price, quantity
-    total_amount: integer
-    Returns: order_id
-    """
     conn = get_connection()
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
         c.execute("BEGIN")
-        c.execute(
-            "INSERT INTO orders (timestamp, total) VALUES (?, ?)",
-            (timestamp, total_amount)
-        )
+        c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
         order_id = c.lastrowid
 
         for item in cart:
@@ -133,13 +107,13 @@ def save_order(cart, total_amount):
                 INSERT INTO order_items (order_id, product_id, name, price, quantity)
                 VALUES (?, ?, ?, ?, ?)
             """, (order_id, item["id"], item["name"], item["price"], item["quantity"]))
-            # Update stock (will raise if insufficient)
             update_product_quantity(item["id"], item["quantity"])
 
         conn.commit()
         return order_id
-    except Exception:
+    except Exception as e:
         conn.rollback()
+        print("❌ Error saving order:", e)
         raise
     finally:
         conn.close()
