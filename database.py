@@ -58,23 +58,23 @@ def get_products():
 def update_product_quantity(product_id, qty_sold):
     conn = get_connection()
     try:
-        # Only subtract if enough stock exists
         cur = conn.cursor()
-        cur.execute(
-            "SELECT quantity FROM products WHERE id = ?",
-            (product_id,)
-        )
+
+        # Check if product exists
+        cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
         result = cur.fetchone()
         if result is None:
-            raise ValueError(f"Product ID {product_id} does not exist.")
+            raise ValueError(f"❌ Product ID {product_id} not found in database.")
+
         current_qty = result[0]
         if current_qty < qty_sold:
-            raise ValueError(f"Not enough stock for product {product_id}. Requested {qty_sold}, available {current_qty}.")
+            raise ValueError(f"❌ Not enough stock for product {product_id}. Requested {qty_sold}, available {current_qty}.")
 
         cur.execute(
             "UPDATE products SET quantity = quantity - ? WHERE id = ?",
-            (qty_sold, product_id)
+            (int(qty_sold), int(product_id))
         )
+
         conn.commit()
     finally:
         conn.close()
