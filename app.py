@@ -3,190 +3,138 @@ import pandas as pd
 import os
 from datetime import datetime
 
-# -------------- Paths -------------- #
+# ----------- Paths ----------- #
 INVENTORY_FILE = "data/inventory.csv"
 RECEIPT_FOLDER = "data/receipts"
-os.makedirs("data", exist_ok=True)
+os.makedirs("data/images", exist_ok=True)
 os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 
-# -------------- CSS Injection -------------- #
-def inject_custom_css():
-    st.markdown("""
-        <style>
-            /* Set soft app background */
-            .stApp {
-                background-color: #ffffff;
-                font-family: 'Segoe UI', sans-serif;
-                color: #1e1e1e;
-            }
-
-            /* General headers */
-            h1, h2, h3, h4 {
-                color: #1e1e1e;
-                font-weight: 700;
-            }
-
-            /* Markdown headers */
-            .stMarkdown h2, .stMarkdown h3 {
-                color: #1e1e1e;
-            }
-
-            /* DataFrame style override */
-            .stDataFrame {
-                border-radius: 10px;
-                overflow: hidden;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-            }
-
-            /* Button style */
-            button {
-                background-color: #2563eb !important;
-                color: white !important;
-                border-radius: 8px !important;
-                padding: 10px 18px !important;
-                font-weight: 600 !important;
-                font-size: 15px !important;
-                border: none;
-            }
-
-            /* Download button fix */
-            .stDownloadButton > button {
-                background-color: #10b981 !important;
-                color: white !important;
-            }
-
-            /* Info boxes */
-            .stAlert, .stInfo, .stSuccess, .stWarning {
-                border-radius: 8px;
-                font-size: 16px;
-                background-color: #f9fafb;
-                color: #111827;
-            }
-
-            /* Select box and number input tweaks */
-            .stNumberInput input, .stSelectbox div {
-                background-color: #f9f9f9 !important;
-                color: #1e1e1e !important;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-# -------------- Utility Functions -------------- #
-def ensure_inventory():
-    if not os.path.exists(INVENTORY_FILE):
-        sample = pd.DataFrame([
-            [1, "T-Shirt", "Men", "M", 200, 10],
-            [2, "Hoodie", "Unisex", "L", 300, 5],
-        ], columns=["id", "name", "category", "size", "price", "quantity"])
-        sample.to_csv(INVENTORY_FILE, index=False)
-
-@st.cache_data(show_spinner=False)
+# ----------- Load & Save ----------- #
+@st.cache_data
 def load_inventory():
-    ensure_inventory()
     return pd.read_csv(INVENTORY_FILE)
 
 def save_inventory(df):
-    with st.spinner("Saving inventory..."):
-        df.to_csv(INVENTORY_FILE, index=False)
+    df.to_csv(INVENTORY_FILE, index=False)
 
 def save_receipt(cart_df, total_amount):
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"receipt_{now}.csv"
     path = os.path.join(RECEIPT_FOLDER, filename)
-    receipt_df = cart_df.copy()
-    receipt_df["Total Price"] = receipt_df["price"] * receipt_df["quantity"]
-    receipt_df["Date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    receipt_df.loc[0, "Total Amount"] = total_amount  # put summary on top row
-    receipt_df.to_csv(path, index=False)
-    return path, receipt_df
+    cart_df["Total"] = cart_df["price"] * cart_df["quantity"]
+    cart_df["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cart_df.loc[0, "Total Amount"] = total_amount
+    cart_df.to_csv(path, index=False)
 
-# -------------- App Config -------------- #
-st.set_page_config(page_title="🧾 Clothing Store POS", layout="centered")
-inject_custom_css()
-st.title("🧾 Clothing Store POS System")
+# ----------- Styling ----------- #
+def inject_css():
+    st.markdown("""
+        <style>
+        .product-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+            padding: 20px;
+            margin: 10px;
+            text-align: center;
+            width: 230px;
+            display: inline-block;
+            vertical-align: top;
+        }
+        .product-card h4 {
+            margin-bottom: 5px;
+            color: #111827;
+        }
+        .product-card p {
+            margin: 5px 0;
+            color: #555;
+        }
+        .product-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-# Initialize cart session
+# ----------- Setup ----------- #
+st.set_page_config(page_title="🛒 Clothing Store POS", layout="wide")
+inject_css()
+st.title("🛍️ Clothing Store – Tap & Sell")
+
+# ----------- Session State ----------- #
 if "cart" not in st.session_state:
-    st.session_state.cart = {}  # key: id, value: dict with name, price, quantity
+    st.session_state.cart = {}
 
-# Load inventory
+if "selected_item_id" not in st.session_state:
+    st.session_state.selected_item_id = None
+
+# ----------- Load Inventory ----------- #
 inventory = load_inventory()
 
-# -------------- Inventory Download -------------- #
-with st.expander("📥 Download Current Inventory"):
-    st.download_button(
-        label="Download as CSV",
-        data=inventory.to_csv(index=False).encode("utf-8"),
-        file_name="current_inventory.csv",
-        mime="text/csv"
-    )
+# ----------- Product Grid ----------- #
+st.subheader("🧾 Tap to Add Items")
+st.divider()
 
-# -------------- Inventory Display -------------- #
-st.markdown("## 📦 Inventory")
-st.dataframe(inventory, use_container_width=True)
+cols = st.columns(4)
+for i, item in inventory.iterrows():
+    with cols[i % 4]:
+        st.markdown("<div class='product-card'>", unsafe_allow_html=True)
+        image_path = f"data/images/{item['id']}.jpg"
+        if os.path.exists(image_path):
+            st.image(image_path, use_column_width=True)
+        else:
+            st.image("https://via.placeholder.com/230x150?text=No+Image", use_column_width=True)
 
-# -------------- Sale Process -------------- #
-st.markdown("## 🛍️ New Sale")
-item_ids = inventory["id"].tolist()
-item_choice = st.selectbox("Select Item ID", item_ids)
+        st.markdown(f"<h4>{item['name']}</h4>", unsafe_allow_html=True)
+        st.markdown(f"<p>Price: <strong>{item['price']} EGP</strong></p>", unsafe_allow_html=True)
+        st.markdown(f"<p>Stock: {item['quantity']}</p>", unsafe_allow_html=True)
 
-selected_item = inventory[inventory["id"] == item_choice].iloc[0]
-st.markdown(
-    f"**Item:** {selected_item['name']} | **Price:** {selected_item['price']} EGP | **Stock:** {selected_item['quantity']}"
-)
+        if st.button(f"🛒 Select", key=f"select_{item['id']}"):
+            st.session_state.selected_item_id = int(item["id"])
+        st.markdown("</div>", unsafe_allow_html=True)
 
-max_qty = int(selected_item["quantity"]) if selected_item["quantity"] > 0 else 0
-qty = st.number_input("Quantity", min_value=1, max_value=max_qty, step=1, disabled=(max_qty == 0))
-if max_qty == 0:
-    st.warning("Out of stock.")
+# ----------- Quantity Input ----------- #
+if st.session_state.selected_item_id:
+    selected = inventory[inventory["id"] == st.session_state.selected_item_id].iloc[0]
+    st.subheader(f"🧮 Add {selected['name']} to Cart")
+    qty = st.number_input("Enter quantity", min_value=1, max_value=int(selected["quantity"]), step=1, key="qty_input")
 
-if st.button("Add to Cart") and max_qty > 0:
-    sid = int(selected_item["id"])
-    existing = st.session_state.cart.get(sid)
-    new_quantity = qty + (existing["quantity"] if existing else 0)
-    if new_quantity > selected_item["quantity"]:
-        st.warning("Cannot add more than available stock.")
-    else:
-        st.session_state.cart[sid] = {
-            "id": sid,
-            "name": selected_item["name"],
-            "price": selected_item["price"],
-            "quantity": new_quantity,
-        }
-        st.success(f"Cart updated: {new_quantity} x {selected_item['name']}")
+    if st.button("✅ Confirm Add"):
+        sid = int(selected["id"])
+        if sid in st.session_state.cart:
+            st.session_state.cart[sid]["quantity"] += qty
+        else:
+            st.session_state.cart[sid] = {
+                "id": sid,
+                "name": selected["name"],
+                "price": selected["price"],
+                "quantity": qty
+            }
+        st.success(f"Added {qty} x {selected['name']} to cart.")
+        st.session_state.selected_item_id = None
+        st.rerun()
 
-# -------------- Cart Display -------------- #
+    if st.button("❌ Cancel"):
+        st.session_state.selected_item_id = None
+        st.rerun()
+
+# ----------- Cart Section ----------- #
+st.subheader("🛒 Cart")
 if st.session_state.cart:
-    st.markdown("## 🛒 Cart")
-    cart_list = list(st.session_state.cart.values())
-    cart_df = pd.DataFrame(cart_list)
+    cart_df = pd.DataFrame(list(st.session_state.cart.values()))
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
     st.dataframe(cart_df, use_container_width=True)
+    total = cart_df["total"].sum()
+    st.markdown(f"### 💰 Total: {total} EGP")
 
-    total_amount = cart_df["total"].sum()
-    st.markdown(f"### 💰 Total: {total_amount} EGP")
-
-    if st.button("✅ Checkout"):
-        # Update inventory
-        for item in cart_list:
+    if st.button("💳 Checkout"):
+        for item in st.session_state.cart.values():
             inventory.loc[inventory["id"] == item["id"], "quantity"] -= item["quantity"]
         save_inventory(inventory)
-
-        # Save receipt and provide download
-        receipt_path, receipt_df = save_receipt(pd.DataFrame(cart_list), total_amount)
-        st.success(f"✅ Sale Complete! Total: {total_amount} EGP")
-
-        with st.expander("📜 Receipt"):
-            st.dataframe(receipt_df.fillna(""), use_container_width=True)
-            st.download_button(
-                label="Download Receipt CSV",
-                data=open(receipt_path, "rb").read(),
-                file_name=os.path.basename(receipt_path),
-                mime="text/csv"
-            )
-
-        # Reset cart and refresh inventory view
+        save_receipt(cart_df, total)
+        st.success("✅ Order Complete! Receipt saved. Inventory updated.")
         st.session_state.cart = {}
-        st.experimental_rerun()
+        st.rerun()
 else:
     st.info("Cart is empty.")
