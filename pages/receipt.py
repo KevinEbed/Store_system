@@ -43,14 +43,13 @@ def make_zip_bytes(files: dict):
     buf.seek(0)
     return buf
 
-# --- Data Loading ---
+# --- Data Loading --- #
 conn = get_connection()
 orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
 order_items_df = pd.read_sql_query("SELECT * FROM order_items ORDER BY order_id DESC", conn)
 products_df = pd.read_sql_query("SELECT * FROM products ORDER BY id", conn)
 
-# --- Recalculate / Normalize Totals ---
-# Ensure order_items numeric
+# --- Recalculate / Normalize Totals --- #
 order_items_df["price"] = pd.to_numeric(order_items_df["price"], errors="coerce").fillna(0.0)
 order_items_df["quantity"] = pd.to_numeric(order_items_df["quantity"], errors="coerce").fillna(0).astype(int)
 order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantity"]
@@ -59,67 +58,64 @@ order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantit
 recalc_totals = (
     order_items_df.groupby("order_id", as_index=False)["line_total"]
     .sum()
-    .rename(columns={"order_id": "id", "line_total": "total"})
+    .rename(columns={"order_id": "id", "line_total": "total_from_items"})
 )
-# Merge into orders_df, preferring recalculated total if original is missing or zero
+
+# Ensure orders_df has numeric total (fallback)
 orders_df["total"] = pd.to_numeric(orders_df.get("total", 0), errors="coerce").fillna(0.0)
-orders_df = orders_df.merge(recalc_totals, on="id", how="left", suffixes=("", "_from_items"))
-orders_df["total"] = orders_df["total_from_items"].fillna(orders_df["total"])
+
+# Merge and prefer the recalculated total if present and nonzero
+orders_df = orders_df.merge(recalc_totals, on="id", how="left")
+orders_df["total"] = orders_df["total_from_items"].where(
+    orders_df["total_from_items"].notna() & (orders_df["total_from_items"] != 0),
+    orders_df["total"]
+)
 orders_df.drop(columns=["total_from_items"], inplace=True)
 
-# Parse timestamp to date for daily aggregation
+# --- Parse timestamp to date for daily aggregation --- #
 def safe_parse_datetime(s):
-    # Try multiple formats to handle variations
-    formats = [
-        "%Y-%m-%d %H:%M:%S",  # Expected format from app.py
-        "%Y-%m-%d %H:%M:%S.%f",  # With microseconds
-        "%Y-%m-%d",  # Date only
-        "%d/%m/%Y %H:%M:%S",  # Alternative format
-        "%Y/%m/%d %H:%M:%S"   # Another common format
-    ]
-    if pd.isna(s) or s is None or s == "":
+    try:
+        return pd.to_datetime(s, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+    except Exception as e:
+        st.warning(f"Failed to parse timestamp '{s}': {e}")
         return pd.NaT
-    for fmt in formats:
-        try:
-            return pd.to_datetime(s, format=fmt, errors="coerce")
-        except Exception:
-            continue
-    # Log problematic value for debugging
-    st.warning(f"Failed to parse timestamp '{s}' with all formats.")
-    return pd.NaT
 
-# Apply timestamp parsing
-orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
-# Always create date column, even if conversion fails
+if "timestamp" not in orders_df.columns:
+    st.error("Orders table is missing the 'timestamp' column.")
+    orders_df["parsed_ts"] = pd.NaT
+else:
+    orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
+
+# Always create date column (can be NaT)
 orders_df["date"] = orders_df["parsed_ts"].dt.date
-# Debug invalid timestamps
-invalid_timestamps = orders_df[orders_df["parsed_ts"].isna()]["timestamp"].unique()
-if len(invalid_timestamps) > 0:
-    st.warning(f"Found {len(invalid_timestamps)} invalid timestamp values:")
-    st.write("Invalid timestamps:", invalid_timestamps)
-# Check if any valid timestamps were parsed
+
+# Feedback on parsing
 if orders_df["parsed_ts"].isna().all():
-    st.error("All timestamps failed to parse. Daily totals will be empty. Check 'timestamp' column in the orders table.")
+    st.error("Timestamp conversion failed for all rows. Check 'timestamp' column values.")
+    if "timestamp" in orders_df.columns:
+        st.write("Sample problematic timestamp values:", orders_df["timestamp"].unique()[:10])
+else:
+    bad_ts = orders_df[orders_df["parsed_ts"].isna()]
+    if not bad_ts.empty:
+        st.warning(f"{len(bad_ts)} row(s) have unparsable timestamps and will be excluded from daily totals.")
+        st.write("Example invalid timestamps:", bad_ts["timestamp"].unique()[:10])
 
-# Daily totals
-daily_totals_df = pd.DataFrame()  # Initialize empty DataFrame
-if "date" in orders_df.columns and not orders_df["date"].isna().all():
-    daily_totals_df = (
-        orders_df.dropna(subset=["date"])
-        .groupby("date", as_index=False)["total"]
-        .sum()
-        .rename(columns={"total": "daily_total"})
-    )
-    # Format daily_total to two decimals
-    daily_totals_df["daily_total"] = daily_totals_df["daily_total"].map(lambda x: round(x, 2))
+# --- Daily totals --- #
+daily_totals_df = (
+    orders_df.dropna(subset=["date"])
+    .groupby("date", as_index=False)["total"]
+    .sum()
+    .rename(columns={"total": "daily_total"})
+)
+daily_totals_df["daily_total"] = daily_totals_df["daily_total"].round(2)
 
-# --- Display ---
+# --- Display --- #
 st.markdown("## All Orders")
-st.dataframe(orders_df.drop(columns=["parsed_ts"] if "parsed_ts" in orders_df.columns else []), use_container_width=True)
+st.dataframe(orders_df.drop(columns=["parsed_ts"], errors="ignore"), use_container_width=True)
 
 st.markdown("## Daily Sales Summary")
 if daily_totals_df.empty:
-    st.info("No sales data to aggregate by day. This may be due to invalid timestamps.")
+    st.info("No sales data to aggregate by day.")
 else:
     st.dataframe(daily_totals_df, use_container_width=True)
     total_overall = daily_totals_df["daily_total"].sum()
@@ -133,12 +129,15 @@ else:
     if selected_order_id is not None:
         # Extract order row
         order_row = orders_df[orders_df["id"] == selected_order_id].iloc[0].copy()
-        order_row["total"] = float(order_row["total"])
+        try:
+            order_row["total"] = float(order_row["total"])
+        except (ValueError, TypeError):
+            order_row["total"] = 0.0
 
         st.markdown("### Order Summary")
         cols = st.columns(3)
         cols[0].markdown(f"**Order ID:** {order_row['id']}")
-        cols[1].markdown(f"**Timestamp:** {order_row['timestamp']}")
+        cols[1].markdown(f"**Timestamp:** {order_row.get('timestamp', 'N/A')}")
         cols[2].markdown(f"**Total:** {order_row['total']:.2f} EGP")
 
         # Prepare items table
@@ -175,7 +174,7 @@ else:
         def build_receipt_header(order):
             return pd.DataFrame({
                 "Field": ["Order ID", "Timestamp", "Total"],
-                "Value": [order["id"], order["timestamp"], f"{order['total']:.2f} EGP"]
+                "Value": [order["id"], order.get("timestamp", ""), f"{order['total']:.2f} EGP"]
             })
 
         receipt_header_df = build_receipt_header(order_row)
@@ -230,7 +229,7 @@ else:
                 mime="application/zip"
             )
 
-# --- Full export with combined detailed receipts and daily totals ---
+# --- Full export with combined detailed receipts and daily totals --- #
 st.markdown("---")
 st.markdown("## 📦 Full Export (All Orders + Items + Inventory)")
 
@@ -251,11 +250,13 @@ def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
 
         header_df = pd.DataFrame({
             "Field": ["Order ID", "Timestamp", "Total"],
-            "Value": [order_copy["id"], order_copy["timestamp"], f"{order_copy['total']:.2f} EGP"]
+            "Value": [order_copy["id"], order_copy.get("timestamp", ""), f"{order_copy['total']:.2f} EGP"]
         })
         detail_df = items[items["order_id"] == order_copy["id"]].copy()
         if not detail_df.empty:
-            detail_df = detail_df[["product_id", "name", "price", "quantity"]].rename(columns={"product_id": "Product ID", "name": "Name"})
+            detail_df = detail_df[["product_id", "name", "price", "quantity"]].rename(
+                columns={"product_id": "Product ID", "name": "Name"}
+            )
             detail_df["Price"] = pd.to_numeric(detail_df["price"], errors="coerce").fillna(0.0)
             detail_df["Quantity"] = pd.to_numeric(detail_df["quantity"], errors="coerce").fillna(0).astype(int)
             detail_df["Line Total"] = detail_df["Price"] * detail_df["Quantity"]
