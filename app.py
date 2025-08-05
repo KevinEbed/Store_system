@@ -76,38 +76,8 @@ for i, item in enumerate(products):
 # ------------------ Cart Display ------------------ #
 st.markdown("## 🛒 Cart")
 if st.session_state.cart:
-    # Build a product ID to stock mapping for validation
-    product_stock = {p["id"]: p["quantity"] for p in products}
+    # ... quantity adjustments as before (if you want them) ...
 
-    updated_cart = {}
-
-    st.write("### Adjust quantities below:")
-
-    for item in st.session_state.cart.values():
-        max_qty = product_stock.get(item["id"], 0)
-        if max_qty == 0:
-            st.warning(f"⚠️ '{item['name']}' is out of stock and will be removed from the cart.")
-            continue  # skip item from updated cart
-
-        qty = st.number_input(
-            label=f"{item['name']} (Price: {item['price']} EGP)",
-            min_value=1,
-            max_value=max_qty,
-            value=item["quantity"],
-            key=f"cart_qty_{item['id']}"
-        )
-        # Save updated qty for this item
-        updated_cart[item["id"]] = {
-            "id": item["id"],
-            "name": item["name"],
-            "price": item["price"],
-            "quantity": qty
-        }
-
-    # Update cart in session state after inputs
-    st.session_state.cart = updated_cart
-
-    # Recreate DataFrame from updated cart
     cart_df = pd.DataFrame(st.session_state.cart.values())
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
     st.dataframe(cart_df, use_container_width=True)
@@ -117,7 +87,7 @@ if st.session_state.cart:
 
     if st.button("🗑️ Clear Cart"):
         st.session_state.cart = {}
-        st.experimental_rerun()
+        st.success("🧹 Cart cleared!")
 
     if st.session_state.checkout_in_progress:
         st.info("🔁 Processing checkout, please wait...")
@@ -136,38 +106,35 @@ if st.session_state.cart:
             if missing:
                 st.error(f"❌ Product ID(s) not found: {missing}")
                 st.session_state.checkout_in_progress = False
-                st.stop()
-
-            success = False
-            attempt = 0
-            max_attempts = 3
-
-            while attempt < max_attempts and not success:
-                attempt += 1
-                try:
-                    st.write(f"🚀 Attempt #{attempt} to save order...")
-                    order_id = save_order(list(st.session_state.cart.values()), total)
-                    success = True
-                except Exception as e:
-                    st.warning(f"⚠️ Attempt #{attempt} failed: {e}")
-                    if "locked" in str(e).lower() and attempt < max_attempts:
-                        backoff = 0.5 * attempt
-                        st.write(f"🔄 Retrying after {backoff:.1f}s...")
-                        time.sleep(backoff)
-                    else:
-                        st.error(f"❌ Failed to save order: {e}")
-                        break
-
-            if success:
-                st.success("✅ Order complete. Receipt saved. Inventory updated.")
-                st.markdown("#### 📋 Receipt")
-                st.markdown(f"- 🧾 Order ID: `{order_id}`")
-                st.markdown(f"- 💰 Total: `{total} EGP`")
-                st.markdown(f"- 🕒 Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-                st.session_state.cart = {}
-                st.session_state.checkout_in_progress = False
-                st.experimental_rerun()
             else:
+                success = False
+                attempt = 0
+                max_attempts = 3
+
+                while attempt < max_attempts and not success:
+                    attempt += 1
+                    try:
+                        st.write(f"🚀 Attempt #{attempt} to save order...")
+                        order_id = save_order(list(st.session_state.cart.values()), total)
+                        success = True
+                    except Exception as e:
+                        st.warning(f"⚠️ Attempt #{attempt} failed: {e}")
+                        if "locked" in str(e).lower() and attempt < max_attempts:
+                            backoff = 0.5 * attempt
+                            st.write(f"🔄 Retrying after {backoff:.1f}s...")
+                            time.sleep(backoff)
+                        else:
+                            st.error(f"❌ Failed to save order: {e}")
+                            break
+
+                if success:
+                    st.success("✅ Order complete. Receipt saved. Inventory updated.")
+                    st.markdown("#### 📋 Receipt")
+                    st.markdown(f"- 🧾 Order ID: `{order_id}`")
+                    st.markdown(f"- 💰 Total: `{total} EGP`")
+                    st.markdown(f"- 🕒 Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+                    st.session_state.cart = {}
                 st.session_state.checkout_in_progress = False
 else:
     st.info("🛒 Cart is empty.")
+
