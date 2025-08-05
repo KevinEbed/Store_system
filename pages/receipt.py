@@ -49,12 +49,55 @@ orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
 order_items_df = pd.read_sql_query("SELECT * FROM order_items ORDER BY order_id DESC", conn)
 products_df = pd.read_sql_query("SELECT * FROM products ORDER BY id", conn)
 
-# Normalize stored total column
-if not orders_df.empty and "total" in orders_df.columns:
-    orders_df["total"] = pd.to_numeric(orders_df["total"], errors="coerce").fillna(0.0)
+# --- Recalculate / Normalize Totals ---
+# Ensure order_items numeric
+order_items_df["price"] = pd.to_numeric(order_items_df["price"], errors="coerce").fillna(0.0)
+order_items_df["quantity"] = pd.to_numeric(order_items_df["quantity"], errors="coerce").fillna(0).astype(int)
+order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantity"]
 
+# Recalculate total per order from items
+recalc_totals = (
+    order_items_df.groupby("order_id", as_index=False)["line_total"]
+    .sum()
+    .rename(columns={"order_id": "id", "line_total": "total"})
+)
+# Merge into orders_df, preferring recalculated total if original is missing or zero
+orders_df["total"] = pd.to_numeric(orders_df.get("total", 0), errors="coerce").fillna(0.0)
+orders_df = orders_df.merge(recalc_totals, on="id", how="left", suffixes=("", "_from_items"))
+orders_df["total"] = orders_df["total_from_items"].fillna(orders_df["total"])
+orders_df.drop(columns=["total_from_items"], inplace=True)
+
+# Parse timestamp to date for daily aggregation
+def safe_parse_datetime(s):
+    try:
+        return pd.to_datetime(s)
+    except Exception:
+        return pd.NaT
+
+orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
+orders_df["date"] = orders_df["parsed_ts"].dt.date
+
+# Daily totals
+daily_totals_df = (
+    orders_df.dropna(subset=["date"])
+    .groupby("date", as_index=False)["total"]
+    .sum()
+    .rename(columns={"total": "daily_total"})
+)
+# Format daily_total to two decimals
+daily_totals_df["daily_total"] = daily_totals_df["daily_total"].map(lambda x: round(x, 2))
+
+# --- Display ---
 st.markdown("## All Orders")
-st.dataframe(orders_df, use_container_width=True)
+st.dataframe(orders_df.drop(columns=["parsed_ts"]), use_container_width=True)
+
+st.markdown("## Daily Sales Summary")
+if daily_totals_df.empty:
+    st.info("No sales data to aggregate by day.")
+else:
+    st.dataframe(daily_totals_df, use_container_width=True)
+    total_overall = daily_totals_df["daily_total"].sum()
+    st.markdown(f"**Total across all days:** {total_overall:.2f} EGP")
 
 st.markdown("## Retake / Inspect an Order")
 if orders_df.empty:
@@ -62,20 +105,9 @@ if orders_df.empty:
 else:
     selected_order_id = st.selectbox("Select order to inspect or retake", orders_df["id"].tolist())
     if selected_order_id is not None:
-        # Extract order row and ensure total is correct (fallback from items if needed)
+        # Extract order row
         order_row = orders_df[orders_df["id"] == selected_order_id].iloc[0].copy()
-        try:
-            total_val = float(order_row["total"])
-        except (ValueError, TypeError):
-            total_val = 0.0
-
-        items_subset = order_items_df[order_items_df["order_id"] == selected_order_id].copy()
-        if total_val == 0.0 and not items_subset.empty:
-            items_subset["price"] = pd.to_numeric(items_subset["price"], errors="coerce").fillna(0.0)
-            items_subset["quantity"] = pd.to_numeric(items_subset["quantity"], errors="coerce").fillna(0).astype(int)
-            total_val = (items_subset["price"] * items_subset["quantity"]).sum()
-
-        order_row["total"] = float(total_val)
+        order_row["total"] = float(order_row["total"])
 
         st.markdown("### Order Summary")
         cols = st.columns(3)
@@ -113,7 +145,7 @@ else:
             else:
                 st.error("Cannot load empty order into cart.")
 
-        # Build receipt header and detailed items for export
+        # Build receipt header and detailed items
         def build_receipt_header(order):
             return pd.DataFrame({
                 "Field": ["Order ID", "Timestamp", "Total"],
@@ -138,12 +170,10 @@ else:
         if engine:
             buf = io.BytesIO()
             with pd.ExcelWriter(buf, engine=engine) as writer:
-                # Receipt sheet: header + items
                 receipt_sheet = "Receipt"
                 receipt_header_df.to_excel(writer, index=False, sheet_name=receipt_sheet, startrow=0)
                 if not receipt_items_df.empty:
                     receipt_items_df.to_excel(writer, index=False, sheet_name=receipt_sheet, startrow=len(receipt_header_df) + 2)
-                # Raw sheets
                 order_summary_df.to_excel(writer, index=False, sheet_name="OrderSummary")
                 if not items_df.empty:
                     items_df.to_excel(writer, index=False, sheet_name="OrderItems")
@@ -159,7 +189,6 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            # Fallback ZIP
             files = {
                 f"receipt_header_order_{selected_order_id}.csv": receipt_header_df.to_csv(index=False).encode(),
                 f"receipt_items_order_{selected_order_id}.csv": receipt_items_df.to_csv(index=False).encode() if not receipt_items_df.empty else b"",
@@ -175,20 +204,18 @@ else:
                 mime="application/zip"
             )
 
-# --- Full export with combined detailed receipts ---
+# --- Full export with combined detailed receipts and daily totals ---
 st.markdown("---")
 st.markdown("## 📦 Full Export (All Orders + Items + Inventory)")
 
 def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
     blocks = []
     for _, order in orders.sort_values("id", ascending=False).iterrows():
-        # Order header with fallback total
         order_copy = order.copy()
         try:
             total_val = float(order_copy["total"])
         except (ValueError, TypeError):
             total_val = 0.0
-        # Fallback compute
         items_subset = items[items["order_id"] == order_copy["id"]].copy()
         if total_val == 0.0 and not items_subset.empty:
             items_subset["price"] = pd.to_numeric(items_subset["price"], errors="coerce").fillna(0.0)
@@ -200,7 +227,6 @@ def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
             "Field": ["Order ID", "Timestamp", "Total"],
             "Value": [order_copy["id"], order_copy["timestamp"], f"{order_copy['total']:.2f} EGP"]
         })
-        # Items for this order
         detail_df = items[items["order_id"] == order_copy["id"]].copy()
         if not detail_df.empty:
             detail_df = detail_df[["product_id", "name", "price", "quantity"]].rename(columns={"product_id": "Product ID", "name": "Name"})
@@ -211,13 +237,10 @@ def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
         else:
             detail_df = pd.DataFrame(columns=["Product ID", "Name", "Price", "Quantity", "Line Total"])
 
-        # Combine: header, then items, then blank row
         blocks.append(("header", header_df))
         blocks.append(("items", detail_df))
-        # separator
         blocks.append(("sep", pd.DataFrame([{}])))
 
-    # Flatten into one DataFrame with markers
     combined_rows = []
     for typ, df_block in blocks:
         if typ == "header":
@@ -232,7 +255,7 @@ def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
                     "Field": r["Name"],
                     "Value": f"{r['Quantity']} x {r['Price']} = {r['Line Total']:.2f}"
                 })
-        else:  # separator
+        else:
             combined_rows.append({"Section": "", "Field": "", "Value": ""})
 
     combined_df = pd.DataFrame(combined_rows)
@@ -240,8 +263,10 @@ def build_combined_receipts(orders: pd.DataFrame, items: pd.DataFrame):
 
 combined_receipts_df = build_combined_receipts(orders_df, order_items_df)
 
+# Assemble full export
 all_dfs = {
     "CombinedReceipts": combined_receipts_df,
+    "DailyTotals": daily_totals_df,
     "Orders": orders_df,
     "OrderItems": order_items_df,
     "Inventory": products_df
@@ -256,15 +281,15 @@ if excel_full:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
-    # Fallback zipped CSVs
     files = {
         "combined_receipts.csv": combined_receipts_df.to_csv(index=False).encode(),
+        "daily_totals.csv": daily_totals_df.to_csv(index=False).encode(),
         "orders.csv": orders_df.to_csv(index=False).encode(),
         "order_items.csv": order_items_df.to_csv(index=False).encode(),
         "inventory.csv": products_df.to_csv(index=False).encode(),
     }
     zip_full = make_zip_bytes(files)
-    st.warning("Excel export unavailable; providing ZIP of CSVs instead.")
+    st.warning("Excel engine unavailable; providing ZIP of CSVs instead.")
     st.download_button(
         label="📥 Download Everything (ZIP with Detailed Receipts)",
         data=zip_full,
