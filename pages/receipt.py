@@ -70,12 +70,23 @@ orders_df.drop(columns=["total_from_items"], inplace=True)
 # Parse timestamp to date for daily aggregation
 def safe_parse_datetime(s):
     try:
-        return pd.to_datetime(s)
-    except Exception:
+        # Explicitly specify the expected format based on app.py
+        return pd.to_datetime(s, format="%Y-%m-%d %H:%M:%S", errors="coerce")
+    except Exception as e:
+        # Log problematic value for debugging
+        st.warning(f"Failed to parse timestamp '{s}': {e}")
         return pd.NaT
 
 orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
-orders_df["date"] = orders_df["parsed_ts"].dt.date
+# Verify datetime conversion
+if not pd.api.types.is_datetime64_any_dtype(orders_df["parsed_ts"]):
+    st.error("Timestamp conversion failed. Check 'timestamp' column values.")
+    # Display problematic values for debugging
+    invalid_timestamps = orders_df[orders_df["parsed_ts"].isna()]["timestamp"].unique()
+    if len(invalid_timestamps) > 0:
+        st.write("Invalid timestamp values:", invalid_timestamps)
+else:
+    orders_df["date"] = orders_df["parsed_ts"].dt.date
 
 # Daily totals
 daily_totals_df = (
