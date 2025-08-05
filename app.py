@@ -40,29 +40,38 @@ for i, item in enumerate(products):
             else:
                 st.markdown("🖼 No image")
 
-        st.text(f"Price: {item['price']} EGP\nStock: {item['quantity']}")
+        # Calculate available stock after items already in cart
+        in_cart_qty = st.session_state.cart.get(item["id"], {}).get("quantity", 0)
+        available_stock = item["quantity"] - in_cart_qty
+        if available_stock < 0:
+            available_stock = 0
+
+        st.text(f"Price: {item['price']} EGP\nStock: {available_stock}")
 
         qty = st.number_input(
             "Qty",
             min_value=1,
-            max_value=item["quantity"] if item["quantity"] > 0 else 1,
+            max_value=available_stock if available_stock > 0 else 1,
             step=1,
             key=f"qty_{item['id']}"
         )
 
-        if item["quantity"] == 0:
+        if available_stock == 0:
             st.warning("Out of stock")
         elif st.button("➕ Add to Cart", key=f"add_{item['id']}"):
-            if item["id"] in st.session_state.cart:
-                st.session_state.cart[item["id"]]["quantity"] += qty
+            if qty <= available_stock:
+                if item["id"] in st.session_state.cart:
+                    st.session_state.cart[item["id"]]["quantity"] += qty
+                else:
+                    st.session_state.cart[item["id"]] = {
+                        "id": item["id"],
+                        "name": item["name"],
+                        "price": item["price"],
+                        "quantity": qty
+                    }
+                st.success(f"✅ Added {qty} x {item['name']}")
             else:
-                st.session_state.cart[item["id"]] = {
-                    "id": item["id"],
-                    "name": item["name"],
-                    "price": item["price"],
-                    "quantity": qty
-                }
-            st.success(f"✅ Added {qty} x {item['name']}")
+                st.warning(f"⚠️ Cannot add {qty} items. Only {available_stock} left in stock.")
 
 # ------------------ Cart Display ------------------ #
 st.markdown("## 🛒 Cart")
@@ -74,10 +83,15 @@ if st.session_state.cart:
     total = cart_df["total"].sum()
     st.markdown(f"### 💰 Total: {total} EGP")
 
+    if st.button("🗑️ Clear Cart"):
+        st.session_state.cart = {}
+        st.experimental_rerun()
+
     if st.session_state.checkout_in_progress:
         st.info("🔁 Processing checkout, please wait...")
     else:
         if st.button("💳 Checkout"):
+            st.session_state.checkout_in_progress = True
             st.write("🧾 Starting checkout...")
             current_products = reload_products()
             existing_ids = {p["id"] for p in current_products}
@@ -89,9 +103,9 @@ if st.session_state.cart:
                     missing.append(item["id"])
             if missing:
                 st.error(f"❌ Product ID(s) not found: {missing}")
+                st.session_state.checkout_in_progress = False
                 st.stop()
 
-            st.session_state.checkout_in_progress = True
             success = False
             attempt = 0
             max_attempts = 3
