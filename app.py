@@ -26,7 +26,7 @@ def save_receipt(cart_df, total_amount):
     cart_df.loc[0, "Total Amount"] = total_amount
     cart_df.to_csv(path, index=False)
 
-# ----------- Styling ----------- #
+# ----------- CSS Styling ----------- #
 def inject_css():
     st.markdown("""
         <style>
@@ -37,7 +37,7 @@ def inject_css():
             padding: 20px;
             margin: 10px;
             text-align: center;
-            width: 230px;
+            width: 250px;
             display: inline-block;
             vertical-align: top;
         }
@@ -46,8 +46,8 @@ def inject_css():
             color: #111827;
         }
         .product-card p {
-            margin: 5px 0;
-            color: #555;
+            margin: 4px 0;
+            color: #333;
         }
         .product-grid {
             display: flex;
@@ -58,30 +58,30 @@ def inject_css():
     """, unsafe_allow_html=True)
 
 # ----------- Setup ----------- #
-st.set_page_config(page_title="🛒 Clothing Store POS", layout="wide")
+st.set_page_config(page_title="🛍️ Clothing Store POS", layout="wide")
 inject_css()
-st.title("🛍️ Clothing Store – Tap & Sell")
+st.title("🛒 Clothing Store – Tap & Sell")
 
 # ----------- Session State ----------- #
 if "cart" not in st.session_state:
     st.session_state.cart = {}
 
-if "selected_item_id" not in st.session_state:
-    st.session_state.selected_item_id = None
-
 # ----------- Load Inventory ----------- #
 inventory = load_inventory()
 
 # ----------- Product Grid ----------- #
-st.subheader("🧾 Tap to Add Items")
+st.subheader("🧾 Tap & Add Items")
 st.divider()
 
 cols = st.columns(4)
 for i, item in inventory.iterrows():
     with cols[i % 4]:
         st.markdown("<div class='product-card'>", unsafe_allow_html=True)
+        
         image_path = f"data/images/{item['id']}.jpg"
         if os.path.exists(image_path):
+            if st.button("🖼", key=f"img_btn_{item['id']}", help="Click to select", use_container_width=True):
+                pass  # Image is only visual, click not functional in this case
             st.image(image_path, use_column_width=True)
         else:
             st.image("https://via.placeholder.com/230x150?text=No+Image", use_column_width=True)
@@ -90,34 +90,30 @@ for i, item in inventory.iterrows():
         st.markdown(f"<p>Price: <strong>{item['price']} EGP</strong></p>", unsafe_allow_html=True)
         st.markdown(f"<p>Stock: {item['quantity']}</p>", unsafe_allow_html=True)
 
-        if st.button(f"🛒 Select", key=f"select_{item['id']}"):
-            st.session_state.selected_item_id = int(item["id"])
+        qty_key = f"qty_{item['id']}"
+        st.session_state[qty_key] = st.number_input(
+            label="Quantity",
+            min_value=1,
+            max_value=int(item["quantity"]),
+            step=1,
+            key=qty_key
+        )
+
+        if st.button("➕ Add to Cart", key=f"add_{item['id']}"):
+            item_id = int(item["id"])
+            qty = st.session_state[qty_key]
+            if item_id in st.session_state.cart:
+                st.session_state.cart[item_id]["quantity"] += qty
+            else:
+                st.session_state.cart[item_id] = {
+                    "id": item_id,
+                    "name": item["name"],
+                    "price": item["price"],
+                    "quantity": qty
+                }
+            st.success(f"✅ Added {qty} x {item['name']} to cart!")
+
         st.markdown("</div>", unsafe_allow_html=True)
-
-# ----------- Quantity Input ----------- #
-if st.session_state.selected_item_id:
-    selected = inventory[inventory["id"] == st.session_state.selected_item_id].iloc[0]
-    st.subheader(f"🧮 Add {selected['name']} to Cart")
-    qty = st.number_input("Enter quantity", min_value=1, max_value=int(selected["quantity"]), step=1, key="qty_input")
-
-    if st.button("✅ Confirm Add"):
-        sid = int(selected["id"])
-        if sid in st.session_state.cart:
-            st.session_state.cart[sid]["quantity"] += qty
-        else:
-            st.session_state.cart[sid] = {
-                "id": sid,
-                "name": selected["name"],
-                "price": selected["price"],
-                "quantity": qty
-            }
-        st.success(f"Added {qty} x {selected['name']} to cart.")
-        st.session_state.selected_item_id = None
-        st.rerun()
-
-    if st.button("❌ Cancel"):
-        st.session_state.selected_item_id = None
-        st.rerun()
 
 # ----------- Cart Section ----------- #
 st.subheader("🛒 Cart")
@@ -138,3 +134,13 @@ if st.session_state.cart:
         st.rerun()
 else:
     st.info("Cart is empty.")
+
+# ----------- Inventory Download ----------- #
+st.divider()
+st.subheader("📥 Admin: Download Updated Inventory")
+st.download_button(
+    label="⬇️ Download Inventory as Excel",
+    data=inventory.to_csv(index=False).encode('utf-8'),
+    file_name="updated_inventory.csv",
+    mime="text/csv"
+)
