@@ -5,7 +5,7 @@ DB_NAME = "store.db"
 
 # ------------------ DB Connection ------------------ #
 def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+    return sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
 
 def init_db():
     conn = get_connection()
