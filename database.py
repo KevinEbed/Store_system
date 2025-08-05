@@ -4,111 +4,150 @@ from datetime import datetime
 DB_NAME = "store.db"
 
 def get_connection():
-    print("🔌 Connecting to database...")
     return sqlite3.connect(DB_NAME, check_same_thread=False, timeout=10)
 
 def init_db():
-    print("🛠️ Initializing database...")
     conn = get_connection()
-    c = conn.cursor()
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT,
-        size TEXT,
-        price INTEGER NOT NULL,
-        quantity INTEGER NOT NULL
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        total INTEGER NOT NULL
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id INTEGER,
-        product_id INTEGER,
-        name TEXT,
-        price INTEGER,
-        quantity INTEGER,
-        FOREIGN KEY(order_id) REFERENCES orders(id),
-        FOREIGN KEY(product_id) REFERENCES products(id)
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-    print("✅ Database initialized.")
+    try:
+        c = conn.cursor()
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            category TEXT,
+            size TEXT,
+            price INTEGER NOT NULL,
+            quantity INTEGER NOT NULL
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            total INTEGER NOT NULL
+        )
+        """)
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER,
+            product_id INTEGER,
+            name TEXT,
+            size TEXT,
+            price INTEGER,
+            quantity INTEGER,
+            FOREIGN KEY(order_id) REFERENCES orders(id),
+            FOREIGN KEY(product_id) REFERENCES products(id)
+        )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
 
 def get_products():
-    print("📦 Fetching products...")
     conn = get_connection()
-    cursor = conn.execute("SELECT * FROM products")
-    rows = cursor.fetchall()
-    conn.close()
-    columns = ["id", "name", "category", "size", "price", "quantity"]
-    products = [dict(zip(columns, row)) for row in rows]
-    print(f"📦 Loaded {len(products)} products.")
-    return products
+    try:
+        cursor = conn.execute("SELECT * FROM products")
+        rows = cursor.fetchall()
+        columns = ["id", "name", "category", "size", "price", "quantity"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
 
-def update_product_quantity(cur, product_id, qty_sold):
-    print(f"🔄 Updating stock for product ID {product_id} by -{qty_sold}")
+def update_product_quantity(product_id, qty_sold):
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
+        result = cur.fetchone()
+        if result is None:
+            raise ValueError(f"Product ID {product_id} not found.")
+        if result[0] < qty_sold:
+            raise ValueError(f"Insufficient stock for product ID {product_id}.")
+        cur.execute(
+            "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+            (int(qty_sold), int(product_id))
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
-    cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
-    current = cur.fetchone()
-    print(f"📊 Current quantity before update: {current[0] if current else 'Not Found'}")
-
-    if current is None:
-        raise Exception(f"Product ID {product_id} not found")
-
-    if current[0] < qty_sold:
-        raise Exception(f"Not enough stock for product ID {product_id}")
-
-    cur.execute(
-        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
-        (int(qty_sold), int(product_id))
-    )
-
-    cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
-    updated = cur.fetchone()
-    print(f"✅ Quantity after update: {updated[0] if updated else 'Not Found'}")
+def bulk_upload_products(df, overwrite=False):
+    conn = get_connection()
+    try:
+        c = conn.cursor()
+        if overwrite:
+            c.execute("DELETE FROM products")
+        for _, row in df.iterrows():
+            c.execute("""
+                INSERT INTO products (id, name, category, size, price, quantity)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name=excluded.name,
+                    category=excluded.category,
+                    size=excluded.size,
+                    price=excluded.price,
+                    quantity=excluded.quantity
+            """, (
+                int(row["id"]),
+                row["name"],
+                row.get("category", ""),
+                row.get("size", ""),
+                int(row["price"]),
+                int(row["quantity"])
+            ))
+        conn.commit()
+    finally:
+        conn.close()
 
 def save_order(cart, total_amount):
-    print("💾 Saving order...")
     conn = get_connection()
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
-        print(f"🕒 Timestamp: {timestamp}, Total: {total_amount} EGP")
-
+        c.execute("BEGIN")
         c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
         order_id = c.lastrowid
-        print(f"🧾 New order ID: {order_id}")
-
         for item in cart:
-            print(f"🛒 Adding item: {item}")
             c.execute("""
-                INSERT INTO order_items (order_id, product_id, name, price, quantity)
-                VALUES (?, ?, ?, ?, ?)
-            """, (order_id, item["id"], item["name"], item["price"], item["quantity"]))
-
-            update_product_quantity(c, item["id"], item["quantity"])
-
+                INSERT INTO order_items (order_id, product_id, name, size, price, quantity)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                order_id,
+                item["id"],
+                item["name"],
+                item.get("size", ""),
+                item["price"],
+                item["quantity"]
+            ))
+            update_product_quantity(item["id"], item["quantity"])
         conn.commit()
-        print("✅ Order saved successfully.")
         return order_id
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        print("❌ Exception in save_order:", e)
         raise
     finally:
         conn.close()
-        print("🔒 Order DB connection closed.")
+
+def get_order_history():
+    conn = get_connection()
+    try:
+        cursor = conn.execute("SELECT id, timestamp, total FROM orders ORDER BY id DESC")
+        rows = cursor.fetchall()
+        columns = ["id", "timestamp", "total"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
+
+def get_order_items(order_id):
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            "SELECT product_id, name, size, price, quantity FROM order_items WHERE order_id = ?",
+            (order_id,)
+        )
+        rows = cursor.fetchall()
+        columns = ["product_id", "name", "size", "price", "quantity"]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        conn.close()
