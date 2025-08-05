@@ -1,11 +1,55 @@
 import streamlit as st
 import pandas as pd
 import io
+import zipfile
 from datetime import datetime
 from database import get_connection
 
 st.set_page_config(page_title="🧾 Receipts", layout="wide")
 st.title("🧾 Receipts / Orders")
+
+# Utility to choose available Excel engine
+def available_excel_engine():
+    try:
+        import xlsxwriter  # type: ignore
+        return "xlsxwriter"
+    except ImportError:
+        try:
+            import openpyxl  # type: ignore
+            return "openpyxl"
+        except ImportError:
+            return None
+
+def make_excel_bytes(dfs: dict):
+    """
+    dfs: dict of sheet_name -> DataFrame
+    Returns bytes of Excel file or None if no engine available.
+    """
+    engine = available_excel_engine()
+    if engine is None:
+        return None
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine=engine) as writer:
+        for sheet_name, df in dfs.items():
+            df.to_excel(writer, index=False, sheet_name=sheet_name)
+        try:
+            writer.save()
+        except Exception:
+            pass  # some engines don't need explicit save
+    buf.seek(0)
+    return buf
+
+def make_zip_bytes(files: dict):
+    """
+    files: dict of filename -> bytes
+    Returns zipped bytes containing those files.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        for fname, content in files.items():
+            z.writestr(fname, content)
+    buf.seek(0)
+    return buf
 
 # Load orders and items
 conn = get_connection()
@@ -44,7 +88,9 @@ else:
 
         # Retake: load into cart
         if st.button("🔁 Load this order into cart"):
-            # Reconstruct cart in session state
+            # Ensure cart exists
+            if "cart" not in st.session_state:
+                st.session_state.cart = {}
             new_cart = {}
             for _, row in items_df.iterrows():
                 new_cart[int(row["id"])] = {
@@ -56,36 +102,66 @@ else:
             st.session_state.cart = new_cart
             st.success(f"Order {selected_order_id} loaded into cart. Switch to the POS page to checkout.")
 
-        # Download this order as a standalone Excel
+        # Download this order as a standalone Excel or ZIP
         st.markdown("#### 📥 Export this order")
-        towrite = io.BytesIO()
-        with pd.ExcelWriter(towrite, engine="xlsxwriter") as writer:
-            pd.DataFrame([order_row]).to_excel(writer, index=False, sheet_name="OrderSummary")
-            items_df.to_excel(writer, index=False, sheet_name="OrderItems")
-            writer.save()
-        towrite.seek(0)
-        st.download_button(
-            label=f"Download Order {selected_order_id} Excel",
-            data=towrite,
-            file_name=f"order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        order_summary_df = pd.DataFrame([order_row])
+        single_order_dfs = {
+            "OrderSummary": order_summary_df,
+            "OrderItems": items_df
+        }
+        excel_buf = make_excel_bytes(single_order_dfs)
+        if excel_buf:
+            st.download_button(
+                label=f"Download Order {selected_order_id} Excel",
+                data=excel_buf,
+                file_name=f"order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            # Fallback: CSVs zipped
+            files = {
+                f"order_{selected_order_id}_summary.csv": order_summary_df.to_csv(index=False).encode(),
+                f"order_{selected_order_id}_items.csv": items_df.to_csv(index=False).encode(),
+            }
+            zip_buf = make_zip_bytes(files)
+            st.warning("Excel export unavailable; providing ZIP of CSVs instead.")
+            st.download_button(
+                label=f"Download Order {selected_order_id} ZIP",
+                data=zip_buf,
+                file_name=f"order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                mime="application/zip"
+            )
 
 # --- Full export ---
 st.markdown("---")
 st.markdown("## 📦 Full Export (All Orders + Items + Inventory)")
-full_export_buf = io.BytesIO()
-with pd.ExcelWriter(full_export_buf, engine="xlsxwriter") as writer:
-    orders_df.to_excel(writer, index=False, sheet_name="Orders")
-    order_items_df.to_excel(writer, index=False, sheet_name="OrderItems")
-    products_df.to_excel(writer, index=False, sheet_name="Inventory")
-    writer.save()
-full_export_buf.seek(0)
-st.download_button(
-    label="📥 Download Everything (Excel)",
-    data=full_export_buf,
-    file_name=f"full_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+all_dfs = {
+    "Orders": orders_df,
+    "OrderItems": order_items_df,
+    "Inventory": products_df
+}
+excel_full = make_excel_bytes(all_dfs)
+if excel_full:
+    st.download_button(
+        label="📥 Download Everything (Excel)",
+        data=excel_full,
+        file_name=f"full_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+else:
+    # Fallback zipped CSVs
+    files = {
+        "orders.csv": orders_df.to_csv(index=False).encode(),
+        "order_items.csv": order_items_df.to_csv(index=False).encode(),
+        "inventory.csv": products_df.to_csv(index=False).encode(),
+    }
+    zip_full = make_zip_bytes(files)
+    st.warning("Excel export unavailable; providing ZIP of CSVs instead.")
+    st.download_button(
+        label="📥 Download Everything (ZIP)",
+        data=zip_full,
+        file_name=f"full_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+        mime="application/zip"
+    )
 
 conn.close()
