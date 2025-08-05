@@ -1,28 +1,24 @@
 import streamlit as st
-from database import init_db, get_products, save_order
 import pandas as pd
-import os
+from database import init_db, get_products, save_order
 
-# ---------- Setup ---------- #
-st.set_page_config(page_title="🛒 POS (DB Edition)", layout="wide")
+st.set_page_config(page_title="🛍️ POS System", layout="wide")
+st.title("🛍️ Clothing Store – Point of Sale")
+
+init_db()
 
 if "cart" not in st.session_state:
     st.session_state.cart = {}
 
-init_db()
+products = get_products()
 
-# ---------- Load Products ---------- #
-inventory = get_products()
-
-st.title("🛍️ Clothing Store – POS with SQLite")
-
-# ---------- Product Cards ---------- #
 cols = st.columns(4)
-for i, item in enumerate(inventory):
+for i, item in enumerate(products):
     with cols[i % 4]:
-        st.markdown("### " + item["name"])
+        st.markdown(f"### {item['name']}")
+        st.image(f"data/images/{item['id']}.jpg", use_column_width=True, output_format="JPEG")
         st.text(f"Price: {item['price']} EGP\nStock: {item['quantity']}")
-        qty = st.number_input("Qty", min_value=1, max_value=item["quantity"], key=f"qty_{item['id']}")
+        qty = st.number_input("Qty", min_value=1, max_value=item["quantity"], step=1, key=f"qty_{item['id']}")
         if st.button("➕ Add to Cart", key=f"add_{item['id']}"):
             if item["id"] in st.session_state.cart:
                 st.session_state.cart[item["id"]]["quantity"] += qty
@@ -33,9 +29,8 @@ for i, item in enumerate(inventory):
                     "price": item["price"],
                     "quantity": qty
                 }
-            st.success(f"{qty} x {item['name']} added to cart!")
+            st.success(f"✅ Added {qty} x {item['name']}")
 
-# ---------- Cart Section ---------- #
 st.subheader("🛒 Cart")
 if st.session_state.cart:
     cart_df = pd.DataFrame(st.session_state.cart.values())
@@ -46,14 +41,8 @@ if st.session_state.cart:
 
     if st.button("💳 Checkout"):
         save_order(list(st.session_state.cart.values()), total)
-        st.success("✅ Order placed, inventory updated.")
+        st.success("✅ Order complete. Receipt saved. Inventory updated.")
         st.session_state.cart = {}
         st.rerun()
 else:
-    st.info("Cart is empty.")
-
-# ---------- Download Inventory ---------- #
-st.divider()
-if st.button("📥 Download Updated Inventory"):
-    products_df = pd.DataFrame(get_products())
-    st.download_button("⬇️ Download Excel", data=products_df.to_csv(index=False), file_name="inventory_db.csv")
+    st.info("🛒 Cart is empty.")
