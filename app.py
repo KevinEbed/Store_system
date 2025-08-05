@@ -23,7 +23,7 @@ for i, item in enumerate(products):
         # Safe image loading with fallback
         image_path = f"data/images/{item['id']}.jpg"
         if os.path.exists(image_path):
-            st.image(image_path, use_container_width=True, output_format="JPEG")
+            st.image(image_path, use_container_width=True)
         else:
             st.image("data/images/placeholder.jpg", use_container_width=True, caption="No Image")
 
@@ -60,18 +60,19 @@ if st.session_state.cart:
     st.markdown(f"### 💰 Total: {total} EGP")
 
     if st.button("💳 Checkout"):
-        # ✅ DEBUG: Check if product exists in DB
+        # Validate all product IDs exist
         for item in st.session_state.cart.values():
-            st.write(f"🔍 Checking ID: {item['id']}")
             product_check = [p for p in get_products() if p['id'] == item['id']]
             if not product_check:
-                st.error(f"❌ Product ID {item['id']} not found in DB")
-                st.stop()  # ⛔ Stop checkout if product is missing
+                st.error(f"❌ Product ID {item['id']} not found in database.")
+                st.stop()
 
-        # ✅ Proceed to save order
-        save_order(list(st.session_state.cart.values()), total)
-        st.success("✅ Order complete. Receipt saved. Inventory updated.")
-        st.session_state.cart = {}
-        st.rerun()
+        try:
+            save_order(list(st.session_state.cart.values()), total)
+            st.success("✅ Order complete. Receipt saved. Inventory updated.")
+            st.session_state.cart = {}
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Failed to save order: {e}")
 else:
     st.info("🛒 Cart is empty.")
