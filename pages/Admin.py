@@ -1,7 +1,10 @@
-from database import get_connection
+import streamlit as st
 import pandas as pd
+from database import get_connection
 
-st.subheader("📤 Admin: Upload Inventory File")
+st.set_page_config(page_title="📤 Admin Upload")
+
+st.title("📤 Upload Product Inventory")
 
 uploaded_file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "csv"])
 
@@ -9,22 +12,19 @@ conn = get_connection()
 existing_count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
 
 if uploaded_file:
-    # Load file into DataFrame
     if uploaded_file.name.endswith(".csv"):
         df = pd.read_csv(uploaded_file)
     else:
         df = pd.read_excel(uploaded_file)
 
-    st.write("📦 Preview:")
     st.dataframe(df)
 
     overwrite = st.checkbox("⚠️ Overwrite existing products?", value=False, disabled=(existing_count == 0))
 
     if st.button("🚀 Upload to Database"):
         c = conn.cursor()
-
         if existing_count > 0 and not overwrite:
-            st.warning("❌ Products already exist. Check 'Overwrite' to replace them.")
+            st.warning("❌ Products exist. Enable overwrite to replace.")
         else:
             if overwrite:
                 c.execute("DELETE FROM products")
@@ -36,6 +36,5 @@ if uploaded_file:
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (row["id"], row["name"], row["category"], row["size"], row["price"], row["quantity"]))
             conn.commit()
-            st.success("✅ Products uploaded successfully.")
-
+            st.success("✅ Uploaded successfully.")
     conn.close()
