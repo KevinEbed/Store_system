@@ -4,7 +4,7 @@ from datetime import datetime
 DB_NAME = "store.db"
 
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 def init_db():
     conn = get_connection()
@@ -20,7 +20,6 @@ def init_db():
         quantity INTEGER
     )
     """)
-
     c.execute("""
     CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,7 +27,6 @@ def init_db():
         total INTEGER
     )
     """)
-
     c.execute("""
     CREATE TABLE IF NOT EXISTS order_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,8 +35,7 @@ def init_db():
         name TEXT,
         price INTEGER,
         quantity INTEGER,
-        FOREIGN KEY(order_id) REFERENCES orders(id),
-        FOREIGN KEY(product_id) REFERENCES products(id)
+        FOREIGN KEY(order_id) REFERENCES orders(id)
     )
     """)
 
@@ -47,10 +44,10 @@ def init_db():
 
 def get_products():
     conn = get_connection()
-    df = conn.execute("SELECT * FROM products").fetchall()
-    columns = ["id", "name", "category", "size", "price", "quantity"]
+    rows = conn.execute("SELECT * FROM products").fetchall()
     conn.close()
-    return [dict(zip(columns, row)) for row in df]
+    columns = ["id", "name", "category", "size", "price", "quantity"]
+    return [dict(zip(columns, row)) for row in rows]
 
 def update_product_quantity(product_id, qty_sold):
     conn = get_connection()
@@ -67,8 +64,8 @@ def save_order(cart, total_amount):
 
     for item in cart:
         c.execute("""
-        INSERT INTO order_items (order_id, product_id, name, price, quantity)
-        VALUES (?, ?, ?, ?, ?)
+            INSERT INTO order_items (order_id, product_id, name, price, quantity)
+            VALUES (?, ?, ?, ?, ?)
         """, (order_id, item["id"], item["name"], item["price"], item["quantity"]))
         update_product_quantity(item["id"], item["quantity"])
 
