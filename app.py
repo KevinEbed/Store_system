@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import os
 import time
+import sqlite3
 from datetime import datetime
-from database import init_db, get_products, save_order
+from database import init_db, get_products, save_order, get_connection
 
 st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
@@ -18,6 +19,55 @@ if "checkout_in_progress" not in st.session_state:
 def reload_products():
     st.write("🔄 Reloading products from database...")
     return get_products()
+
+# ------------------ Retake Previous Order UI ------------------ #
+with st.expander("🕘 Retake Previous Order", expanded=True):
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        # Fetch recent orders
+        conn = get_connection()
+        orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC LIMIT 50", conn)
+        order_ids = orders_df["id"].tolist()
+        if order_ids:
+            selected_order = st.selectbox("Select Order to Retake", order_ids)
+        else:
+            selected_order = None
+            st.info("No previous orders found.")
+
+        if selected_order:
+            # Show order summary
+            order_row = orders_df[orders_df["id"] == selected_order].iloc[0]
+            st.markdown(f"**Order ID:** {order_row['id']}")
+            st.markdown(f"**Timestamp:** {order_row['timestamp']}")
+            st.markdown(f"**Total:** {order_row['total']} EGP")
+
+            # Load items
+            items_df = pd.read_sql_query(
+                "SELECT product_id AS id, name, price, quantity FROM order_items WHERE order_id = ?",
+                conn,
+                params=(selected_order,)
+            )
+            items_df["total"] = items_df["price"] * items_df["quantity"]
+            st.markdown("#### Items in that order")
+            st.dataframe(items_df, use_container_width=True)
+
+            if st.button("🔁 Load this order into cart"):
+                # Replace cart with this order's items
+                new_cart = {}
+                for _, row in items_df.iterrows():
+                    new_cart[int(row["id"])] = {
+                        "id": int(row["id"]),
+                        "name": row["name"],
+                        "price": row["price"],
+                        "quantity": int(row["quantity"])
+                    }
+                st.session_state.cart = new_cart
+                st.success(f"Loaded order {selected_order} into cart.")
+                st.experimental_rerun()
+    with col2:
+        if st.button("🔄 Refresh Products / Orders"):
+            st.experimental_rerun()
+    conn.close()
 
 # ------------------ Load Products ------------------ #
 products = reload_products()
@@ -76,8 +126,6 @@ for i, item in enumerate(products):
 # ------------------ Cart Display ------------------ #
 st.markdown("## 🛒 Cart")
 if st.session_state.cart:
-    # ... quantity adjustments as before (if you want them) ...
-
     cart_df = pd.DataFrame(st.session_state.cart.values())
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
     st.dataframe(cart_df, use_container_width=True)
@@ -137,4 +185,3 @@ if st.session_state.cart:
                 st.session_state.checkout_in_progress = False
 else:
     st.info("🛒 Cart is empty.")
-
