@@ -49,7 +49,7 @@ for i, item in enumerate(products):
                 }
             st.success(f"✅ Added {qty} x {item['name']}")
 
-# Cart Display
+# 🛒 Cart Display
 st.subheader("🛒 Cart")
 if st.session_state.cart:
     cart_df = pd.DataFrame(st.session_state.cart.values())
@@ -60,6 +60,15 @@ if st.session_state.cart:
     st.markdown(f"### 💰 Total: {total} EGP")
 
     if st.button("💳 Checkout"):
+        # ✅ DEBUG: Check if product exists in DB
+        for item in st.session_state.cart.values():
+            st.write(f"🔍 Checking ID: {item['id']}")
+            product_check = [p for p in get_products() if p['id'] == item['id']]
+            if not product_check:
+                st.error(f"❌ Product ID {item['id']} not found in DB")
+                st.stop()  # ⛔ Stop checkout if product is missing
+
+        # ✅ Proceed to save order
         save_order(list(st.session_state.cart.values()), total)
         st.success("✅ Order complete. Receipt saved. Inventory updated.")
         st.session_state.cart = {}
