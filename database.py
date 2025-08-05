@@ -87,7 +87,6 @@ def save_order(cart, total_amount):
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
-        c.execute("BEGIN")
         print(f"🕒 Timestamp: {timestamp}, Total: {total_amount} EGP")
 
         c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
@@ -101,7 +100,7 @@ def save_order(cart, total_amount):
                 VALUES (?, ?, ?, ?, ?)
             """, (order_id, item["id"], item["name"], item["price"], item["quantity"]))
 
-            update_product_quantity(item["id"], item["quantity"])
+            update_product_quantity(c, item["id"], item["quantity"])
 
         conn.commit()
         print("✅ Order saved successfully.")
