@@ -21,10 +21,6 @@ def available_excel_engine():
             return None
 
 def make_excel_bytes(dfs: dict):
-    """
-    dfs: mapping sheet name -> DataFrame
-    Returns a BytesIO of the Excel file, or None if no engine available.
-    """
     engine = available_excel_engine()
     if engine is None:
         return None
@@ -40,10 +36,6 @@ def make_excel_bytes(dfs: dict):
     return buf
 
 def make_zip_bytes(files: dict):
-    """
-    files: mapping filename -> bytes
-    Returns zipped BytesIO containing those files.
-    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
         for fname, content in files.items():
@@ -57,7 +49,7 @@ orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
 order_items_df = pd.read_sql_query("SELECT * FROM order_items ORDER BY order_id DESC", conn)
 products_df = pd.read_sql_query("SELECT * FROM products ORDER BY id", conn)
 
-# Ensure numeric totals
+# Normalize numeric fields
 if not orders_df.empty and "total" in orders_df.columns:
     orders_df["total"] = pd.to_numeric(orders_df["total"], errors="coerce").fillna(0.0)
 
@@ -71,7 +63,6 @@ else:
     selected_order_id = st.selectbox("Select order to inspect or retake", orders_df["id"].tolist())
     if selected_order_id is not None:
         order_row = orders_df[orders_df["id"] == selected_order_id].iloc[0].copy()
-        # Normalize total
         order_row["total"] = float(order_row["total"])
 
         st.markdown("### Order Summary")
@@ -83,18 +74,16 @@ else:
         # Items
         items_df = order_items_df[order_items_df["order_id"] == selected_order_id].copy()
         if not items_df.empty:
-            items_df = items_df[["product_id", "name", "price", "quantity"]].rename(
-                columns={"product_id": "id"}
-            )
+            items_df = items_df[["product_id", "name", "price", "quantity"]].rename(columns={"product_id": "id"})
             items_df["price"] = pd.to_numeric(items_df["price"], errors="coerce").fillna(0.0)
             items_df["quantity"] = pd.to_numeric(items_df["quantity"], errors="coerce").fillna(0).astype(int)
-            items_df["total"] = items_df["price"] * items_df["quantity"]
+            items_df["line_total"] = items_df["price"] * items_df["quantity"]
             st.markdown("### Items in Order")
             st.dataframe(items_df, use_container_width=True)
         else:
             st.warning("No items found for this order (unexpected).")
 
-        # Retake order into cart
+        # Retake into cart
         if st.button("🔁 Load this order into cart"):
             if "cart" not in st.session_state:
                 st.session_state.cart = {}
@@ -112,30 +101,79 @@ else:
             else:
                 st.error("Cannot load empty order into cart.")
 
+        # Build receipt sheet: header info + items
+        def build_receipt_sheet(order, items):
+            # Header
+            header = pd.DataFrame({
+                "Field": ["Order ID", "Timestamp", "Total"],
+                "Value": [order["id"], order["timestamp"], f"{order['total']} EGP"]
+            })
+            # Items table
+            items_table = items[["id", "name", "price", "quantity", "line_total"]].copy()
+            items_table = items_table.rename(columns={
+                "id": "Product ID",
+                "name": "Name",
+                "price": "Price",
+                "quantity": "Quantity",
+                "line_total": "Line Total"
+            })
+            return header, items_table
+
         # Export single order
         st.markdown("#### 📥 Export this order")
         order_summary_df = pd.DataFrame([order_row])
-        single_order_dfs = {"OrderSummary": order_summary_df, "OrderItems": items_df if not items_df.empty else pd.DataFrame()}
-        excel_buf = make_excel_bytes(single_order_dfs)
-        if excel_buf:
+        single_order_dfs = {
+            "OrderSummary": order_summary_df,
+            "OrderItems": items_df if not items_df.empty else pd.DataFrame()
+        }
+
+        # Build combined receipt sheet
+        receipt_header_df, receipt_items_df = build_receipt_sheet(order_row, items_df if not items_df.empty else pd.DataFrame())
+        # We'll write custom: Receipt header then blank row then items
+        engine = available_excel_engine()
+        if engine:
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine=engine) as writer:
+                # Write receipt in one sheet manually
+                receipt_sheet_name = "Receipt"
+                # Write header starting at row 0
+                receipt_header_df.to_excel(writer, index=False, sheet_name=receipt_sheet_name, startrow=0)
+                # Write items starting a few rows below
+                start_items_row = len(receipt_header_df) + 2
+                receipt_items_df.to_excel(writer, index=False, sheet_name=receipt_sheet_name, startrow=start_items_row)
+                # Also include raw summary and items in separate sheets
+                order_summary_df.to_excel(writer, index=False, sheet_name="OrderSummary")
+                if not items_df.empty:
+                    items_df.to_excel(writer, index=False, sheet_name="OrderItems")
+                try:
+                    writer.save()
+                except Exception:
+                    pass
+            buf.seek(0)
             st.download_button(
-                label=f"Download Order {selected_order_id} Excel",
-                data=excel_buf,
-                file_name=f"order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                label=f"Download Order {selected_order_id} Receipt (.xlsx)",
+                data=buf,
+                file_name=f"receipt_order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            # Fallback to ZIP of CSVs
+            # Fallback ZIP of CSVs: include receipt header + items and raw
+            header_csv = receipt_header_df.to_csv(index=False).encode()
+            items_csv = receipt_items_df.to_csv(index=False).encode()
+            summary_csv = order_summary_df.to_csv(index=False).encode()
+            order_items_csv = items_df.to_csv(index=False).encode() if not items_df.empty else b""
             files = {
-                f"order_{selected_order_id}_summary.csv": order_summary_df.to_csv(index=False).encode(),
-                f"order_{selected_order_id}_items.csv": items_df.to_csv(index=False).encode() if not items_df.empty else b"",
+                f"receipt_header_order_{selected_order_id}.csv": header_csv,
+                f"receipt_items_order_{selected_order_id}.csv": items_csv,
+                f"order_summary_{selected_order_id}.csv": summary_csv,
+                f"order_items_{selected_order_id}.csv": order_items_csv,
             }
             zip_buf = make_zip_bytes(files)
-            st.warning("Excel export unavailable; providing ZIP of CSVs instead.")
+            st.warning("Excel engine not available; providing ZIP of CSVs instead.")
             st.download_button(
-                label=f"Download Order {selected_order_id} ZIP",
+                label=f"Download Order {selected_order_id} Receipt (ZIP)",
                 data=zip_buf,
-                file_name=f"order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                file_name=f"receipt_order_{selected_order_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
                 mime="application/zip"
             )
 
@@ -152,7 +190,6 @@ if excel_full:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
-    # Fallback zipped CSVs
     files = {
         "orders.csv": orders_df.to_csv(index=False).encode(),
         "order_items.csv": order_items_df.to_csv(index=False).encode(),
