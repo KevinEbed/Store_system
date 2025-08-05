@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
-from database import init_db, get_products, save_order, get_connection
+from database import init_db, get_products, save_order
 
 st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
@@ -16,57 +16,7 @@ if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 
 def reload_products():
-    # Explicit reload helper (called on demand or after checkout)
     return get_products()
-
-# ------------------ Manual Refresh ------------------ #
-if st.button("🔄 Refresh Products"):
-    st.experimental_rerun()
-
-# ------------------ Retake Previous Order UI (optional) ------------------ #
-with st.expander("🕘 Retake Previous Order", expanded=False):
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        conn = get_connection()
-        orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC LIMIT 50", conn)
-        order_ids = orders_df["id"].tolist()
-        if order_ids:
-            selected_order = st.selectbox("Select Order to Retake", order_ids)
-        else:
-            selected_order = None
-            st.info("No previous orders found.")
-
-        if selected_order is not None:
-            order_row = orders_df[orders_df["id"] == selected_order].iloc[0]
-            st.markdown(f"**Order ID:** {order_row['id']}")
-            st.markdown(f"**Timestamp:** {order_row['timestamp']}")
-            st.markdown(f"**Total:** {order_row['total']} EGP")
-
-            items_df = pd.read_sql_query(
-                "SELECT product_id AS id, name, price, quantity FROM order_items WHERE order_id = ?",
-                conn,
-                params=(selected_order,)
-            )
-            items_df["total"] = items_df["price"] * items_df["quantity"]
-            st.markdown("#### Items in that order")
-            st.dataframe(items_df, use_container_width=True)
-
-            if st.button("🔁 Load this order into cart"):
-                new_cart = {}
-                for _, row in items_df.iterrows():
-                    new_cart[int(row["id"])] = {
-                        "id": int(row["id"]),
-                        "name": row["name"],
-                        "price": row["price"],
-                        "quantity": int(row["quantity"])
-                    }
-                st.session_state.cart = new_cart
-                st.success(f"Loaded order {selected_order} into cart.")
-                st.experimental_rerun()
-    with col2:
-        if st.button("🔄 Refresh Orders/Retake UI"):
-            st.experimental_rerun()
-    conn.close()
 
 # ------------------ Load Products ------------------ #
 products = reload_products()
