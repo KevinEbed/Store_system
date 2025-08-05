@@ -69,42 +69,57 @@ orders_df.drop(columns=["total_from_items"], inplace=True)
 
 # Parse timestamp to date for daily aggregation
 def safe_parse_datetime(s):
-    try:
-        # Explicitly specify the expected format based on app.py
-        return pd.to_datetime(s, format="%Y-%m-%d %H:%M:%S", errors="coerce")
-    except Exception as e:
-        # Log problematic value for debugging
-        st.warning(f"Failed to parse timestamp '{s}': {e}")
+    # Try multiple formats to handle variations
+    formats = [
+        "%Y-%m-%d %H:%M:%S",  # Expected format from app.py
+        "%Y-%m-%d %H:%M:%S.%f",  # With microseconds
+        "%Y-%m-%d",  # Date only
+        "%d/%m/%Y %H:%M:%S",  # Alternative format
+        "%Y/%m/%d %H:%M:%S"   # Another common format
+    ]
+    if pd.isna(s) or s is None or s == "":
         return pd.NaT
+    for fmt in formats:
+        try:
+            return pd.to_datetime(s, format=fmt, errors="coerce")
+        except Exception:
+            continue
+    # Log problematic value for debugging
+    st.warning(f"Failed to parse timestamp '{s}' with all formats.")
+    return pd.NaT
 
+# Apply timestamp parsing
 orders_df["parsed_ts"] = orders_df["timestamp"].apply(safe_parse_datetime)
-# Verify datetime conversion
-if not pd.api.types.is_datetime64_any_dtype(orders_df["parsed_ts"]):
-    st.error("Timestamp conversion failed. Check 'timestamp' column values.")
-    # Display problematic values for debugging
-    invalid_timestamps = orders_df[orders_df["parsed_ts"].isna()]["timestamp"].unique()
-    if len(invalid_timestamps) > 0:
-        st.write("Invalid timestamp values:", invalid_timestamps)
-else:
-    orders_df["date"] = orders_df["parsed_ts"].dt.date
+# Always create date column, even if conversion fails
+orders_df["date"] = orders_df["parsed_ts"].dt.date
+# Debug invalid timestamps
+invalid_timestamps = orders_df[orders_df["parsed_ts"].isna()]["timestamp"].unique()
+if len(invalid_timestamps) > 0:
+    st.warning(f"Found {len(invalid_timestamps)} invalid timestamp values:")
+    st.write("Invalid timestamps:", invalid_timestamps)
+# Check if any valid timestamps were parsed
+if orders_df["parsed_ts"].isna().all():
+    st.error("All timestamps failed to parse. Daily totals will be empty. Check 'timestamp' column in the orders table.")
 
 # Daily totals
-daily_totals_df = (
-    orders_df.dropna(subset=["date"])
-    .groupby("date", as_index=False)["total"]
-    .sum()
-    .rename(columns={"total": "daily_total"})
-)
-# Format daily_total to two decimals
-daily_totals_df["daily_total"] = daily_totals_df["daily_total"].map(lambda x: round(x, 2))
+daily_totals_df = pd.DataFrame()  # Initialize empty DataFrame
+if "date" in orders_df.columns and not orders_df["date"].isna().all():
+    daily_totals_df = (
+        orders_df.dropna(subset=["date"])
+        .groupby("date", as_index=False)["total"]
+        .sum()
+        .rename(columns={"total": "daily_total"})
+    )
+    # Format daily_total to two decimals
+    daily_totals_df["daily_total"] = daily_totals_df["daily_total"].map(lambda x: round(x, 2))
 
 # --- Display ---
 st.markdown("## All Orders")
-st.dataframe(orders_df.drop(columns=["parsed_ts"]), use_container_width=True)
+st.dataframe(orders_df.drop(columns=["parsed_ts"] if "parsed_ts" in orders_df.columns else []), use_container_width=True)
 
 st.markdown("## Daily Sales Summary")
 if daily_totals_df.empty:
-    st.info("No sales data to aggregate by day.")
+    st.info("No sales data to aggregate by day. This may be due to invalid timestamps.")
 else:
     st.dataframe(daily_totals_df, use_container_width=True)
     total_overall = daily_totals_df["daily_total"].sum()
