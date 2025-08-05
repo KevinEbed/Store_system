@@ -59,34 +59,27 @@ def get_products():
     print(f"📦 Loaded {len(products)} products.")
     return products
 
-def update_product_quantity(product_id, qty_sold):
+def update_product_quantity(cur, product_id, qty_sold):
     print(f"🔄 Updating stock for product ID {product_id} by -{qty_sold}")
-    conn = get_connection()
-    try:
-        cur = conn.cursor()
 
-        # Print current quantity
-        cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
-        current = cur.fetchone()
-        print(f"📊 Current quantity before update: {current[0] if current else 'Not Found'}")
+    cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
+    current = cur.fetchone()
+    print(f"📊 Current quantity before update: {current[0] if current else 'Not Found'}")
 
-        cur.execute(
-            "UPDATE products SET quantity = quantity - ? WHERE id = ?",
-            (int(qty_sold), int(product_id))
-        )
+    if current is None:
+        raise Exception(f"Product ID {product_id} not found")
 
-        # Confirm update
-        cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
-        updated = cur.fetchone()
-        print(f"✅ Quantity after update: {updated[0] if updated else 'Not Found'}")
+    if current[0] < qty_sold:
+        raise Exception(f"Not enough stock for product ID {product_id}")
 
-        conn.commit()
-    except Exception as e:
-        print("❌ Error updating product quantity:", e)
-        raise
-    finally:
-        conn.close()
-        print("🔒 Product update DB connection closed.")
+    cur.execute(
+        "UPDATE products SET quantity = quantity - ? WHERE id = ?",
+        (int(qty_sold), int(product_id))
+    )
+
+    cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
+    updated = cur.fetchone()
+    print(f"✅ Quantity after update: {updated[0] if updated else 'Not Found'}")
 
 def save_order(cart, total_amount):
     print("💾 Saving order...")
