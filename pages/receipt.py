@@ -49,7 +49,7 @@ orders_df = pd.read_sql_query("SELECT * FROM orders ORDER BY id DESC", conn)
 order_items_df = pd.read_sql_query("SELECT * FROM order_items ORDER BY order_id DESC", conn)
 products_df = pd.read_sql_query("SELECT * FROM products ORDER BY id", conn)
 
-# Normalize numeric fields
+# Normalize stored total column
 if not orders_df.empty and "total" in orders_df.columns:
     orders_df["total"] = pd.to_numeric(orders_df["total"], errors="coerce").fillna(0.0)
 
@@ -62,16 +62,29 @@ if orders_df.empty:
 else:
     selected_order_id = st.selectbox("Select order to inspect or retake", orders_df["id"].tolist())
     if selected_order_id is not None:
+        # Extract order row and ensure total is correct (fallback from items if needed)
         order_row = orders_df[orders_df["id"] == selected_order_id].iloc[0].copy()
-        order_row["total"] = float(order_row["total"])
+        try:
+            total_val = float(order_row["total"])
+        except (ValueError, TypeError):
+            total_val = 0.0
+
+        # Fallback: compute from order_items if stored total is zero
+        items_subset = order_items_df[order_items_df["order_id"] == selected_order_id].copy()
+        if total_val == 0.0 and not items_subset.empty:
+            items_subset["price"] = pd.to_numeric(items_subset["price"], errors="coerce").fillna(0.0)
+            items_subset["quantity"] = pd.to_numeric(items_subset["quantity"], errors="coerce").fillna(0).astype(int)
+            total_val = (items_subset["price"] * items_subset["quantity"]).sum()
+
+        order_row["total"] = float(total_val)
 
         st.markdown("### Order Summary")
         cols = st.columns(3)
         cols[0].markdown(f"**Order ID:** {order_row['id']}")
         cols[1].markdown(f"**Timestamp:** {order_row['timestamp']}")
-        cols[2].markdown(f"**Total:** {order_row['total']} EGP")
+        cols[2].markdown(f"**Total:** {order_row['total']:.2f} EGP")
 
-        # Items
+        # Prepare items table
         items_df = order_items_df[order_items_df["order_id"] == selected_order_id].copy()
         if not items_df.empty:
             items_df = items_df[["product_id", "name", "price", "quantity"]].rename(columns={"product_id": "id"})
@@ -101,23 +114,23 @@ else:
             else:
                 st.error("Cannot load empty order into cart.")
 
-        # Build receipt sheet: header info + items
-        def build_receipt_sheet(order, items):
-            # Header
-            header = pd.DataFrame({
+        # Build receipt header and items for export
+        def build_receipt_header(order):
+            return pd.DataFrame({
                 "Field": ["Order ID", "Timestamp", "Total"],
-                "Value": [order["id"], order["timestamp"], f"{order['total']} EGP"]
+                "Value": [order["id"], order["timestamp"], f"{order['total']:.2f} EGP"]
             })
-            # Items table
-            items_table = items[["id", "name", "price", "quantity", "line_total"]].copy()
-            items_table = items_table.rename(columns={
+
+        receipt_header_df = build_receipt_header(order_row)
+        receipt_items_df = pd.DataFrame()
+        if not items_df.empty:
+            receipt_items_df = items_df.rename(columns={
                 "id": "Product ID",
                 "name": "Name",
                 "price": "Price",
                 "quantity": "Quantity",
                 "line_total": "Line Total"
-            })
-            return header, items_table
+            })[["Product ID", "Name", "Price", "Quantity", "Line Total"]]
 
         # Export single order
         st.markdown("#### 📥 Export this order")
@@ -127,21 +140,16 @@ else:
             "OrderItems": items_df if not items_df.empty else pd.DataFrame()
         }
 
-        # Build combined receipt sheet
-        receipt_header_df, receipt_items_df = build_receipt_sheet(order_row, items_df if not items_df.empty else pd.DataFrame())
-        # We'll write custom: Receipt header then blank row then items
         engine = available_excel_engine()
         if engine:
             buf = io.BytesIO()
             with pd.ExcelWriter(buf, engine=engine) as writer:
-                # Write receipt in one sheet manually
-                receipt_sheet_name = "Receipt"
-                # Write header starting at row 0
-                receipt_header_df.to_excel(writer, index=False, sheet_name=receipt_sheet_name, startrow=0)
-                # Write items starting a few rows below
-                start_items_row = len(receipt_header_df) + 2
-                receipt_items_df.to_excel(writer, index=False, sheet_name=receipt_sheet_name, startrow=start_items_row)
-                # Also include raw summary and items in separate sheets
+                # Receipt sheet: header then items
+                receipt_sheet = "Receipt"
+                receipt_header_df.to_excel(writer, index=False, sheet_name=receipt_sheet, startrow=0)
+                if not receipt_items_df.empty:
+                    receipt_items_df.to_excel(writer, index=False, sheet_name=receipt_sheet, startrow=len(receipt_header_df) + 2)
+                # Raw data sheets
                 order_summary_df.to_excel(writer, index=False, sheet_name="OrderSummary")
                 if not items_df.empty:
                     items_df.to_excel(writer, index=False, sheet_name="OrderItems")
@@ -157,16 +165,12 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            # Fallback ZIP of CSVs: include receipt header + items and raw
-            header_csv = receipt_header_df.to_csv(index=False).encode()
-            items_csv = receipt_items_df.to_csv(index=False).encode()
-            summary_csv = order_summary_df.to_csv(index=False).encode()
-            order_items_csv = items_df.to_csv(index=False).encode() if not items_df.empty else b""
+            # Fallback ZIP of CSVs: include receipt header + items + raw
             files = {
-                f"receipt_header_order_{selected_order_id}.csv": header_csv,
-                f"receipt_items_order_{selected_order_id}.csv": items_csv,
-                f"order_summary_{selected_order_id}.csv": summary_csv,
-                f"order_items_{selected_order_id}.csv": order_items_csv,
+                f"receipt_header_order_{selected_order_id}.csv": receipt_header_df.to_csv(index=False).encode(),
+                f"receipt_items_order_{selected_order_id}.csv": receipt_items_df.to_csv(index=False).encode() if not receipt_items_df.empty else b"",
+                f"order_summary_{selected_order_id}.csv": order_summary_df.to_csv(index=False).encode(),
+                f"order_items_{selected_order_id}.csv": items_df.to_csv(index=False).encode() if not items_df.empty else b"",
             }
             zip_buf = make_zip_bytes(files)
             st.warning("Excel engine not available; providing ZIP of CSVs instead.")
