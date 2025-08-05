@@ -13,67 +13,60 @@ os.makedirs(RECEIPT_FOLDER, exist_ok=True)
 def inject_custom_css():
     st.markdown("""
         <style>
-            /* General app background */
+            /* Set soft app background */
             .stApp {
-                background-color: #f4f6f8;
-                color: #2c3e50;  /* Default text color */
+                background-color: #ffffff;
                 font-family: 'Segoe UI', sans-serif;
+                color: #1e1e1e;
             }
 
-            /* Headings */
+            /* General headers */
             h1, h2, h3, h4 {
-                color: #2c3e50 !important;
+                color: #1e1e1e;
                 font-weight: 700;
             }
 
-            /* Markdown headings */
+            /* Markdown headers */
             .stMarkdown h2, .stMarkdown h3 {
-                color: #2c3e50 !important;
+                color: #1e1e1e;
             }
 
-            /* Button styling */
+            /* DataFrame style override */
+            .stDataFrame {
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            }
+
+            /* Button style */
             button {
-                background-color: #3498db !important;
-                color: #ffffff !important;
-                border-radius: 10px !important;
-                padding: 0.6em 1em !important;
+                background-color: #2563eb !important;
+                color: white !important;
+                border-radius: 8px !important;
+                padding: 10px 18px !important;
                 font-weight: 600 !important;
+                font-size: 15px !important;
                 border: none;
             }
 
-            /* Download buttons (Streamlit auto styles) */
+            /* Download button fix */
             .stDownloadButton > button {
-                background-color: #2ecc71 !important;
+                background-color: #10b981 !important;
                 color: white !important;
-                font-weight: bold !important;
-                border-radius: 10px;
             }
 
-            /* DataFrame background */
-            .stDataFrame {
-                background-color: white !important;
-                border-radius: 10px;
-                padding: 10px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-                color: #2c3e50 !important;
-            }
-
-            /* Inputs & Selectboxes */
-            .stNumberInput, .stSelectbox {
-                color: #2c3e50 !important;
-            }
-
-            /* Success, Info, Warning messages */
+            /* Info boxes */
             .stAlert, .stInfo, .stSuccess, .stWarning {
-                border-radius: 10px;
-                padding: 12px;
+                border-radius: 8px;
                 font-size: 16px;
-                color: #2c3e50;
+                background-color: #f9fafb;
+                color: #111827;
             }
 
-            /* Sidebar (if used) */
-            .css-1d391kg {
-                background-color: #f8f9fa !important;
+            /* Select box and number input tweaks */
+            .stNumberInput input, .stSelectbox div {
+                background-color: #f9f9f9 !important;
+                color: #1e1e1e !important;
             }
         </style>
     """, unsafe_allow_html=True)
