@@ -35,20 +35,23 @@ for name, variants in grouped.items():
         st.warning("🚫 Out of stock for all sizes.")
         continue
 
+    # Initialize or retrieve selected size from session state
+    if f"size_{name}" not in st.session_state:
+        st.session_state[f"size_{name}"] = available_sizes[0]["size"]
+    selected_size = st.session_state[f"size_{name}"]
+    selected_variant = next(v for v in available_sizes if v["size"] == selected_size)
+
     # Size selection with buttons
     size_cols = st.columns(len(available_sizes))
-    selected_size = st.session_state.get(f"size_{name}", available_sizes[0]["size"])
     for i, variant in enumerate(available_sizes):
         with size_cols[i]:
-            if st.button(variant["size"], key=f"size_{name}_{variant['size']}"):
+            if st.button(variant["size"], key=f"size_btn_{name}_{variant['size']}"):
                 st.session_state[f"size_{name}"] = variant["size"]
-                selected_variant = variant
+                st.experimental_rerun()  # Re-run to update the selected variant
             if selected_size == variant["size"]:
                 st.markdown(f"<div style='text-align:center; background-color:#000; color:#fff; padding:5px;'>{variant['size']}</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"<div style='text-align:center; padding:5px;'>{variant['size']}</div>", unsafe_allow_html=True)
-
-    selected_variant = next(v for v in available_sizes if v["size"] == selected_size)
 
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
