@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from database import init_db, get_products, save_order
 
-st.set_page_config(page_title="🛍️ POS System", layout="wide")  # removed invalid theme arg
+st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
 
 # ------------------ Init ------------------ #
@@ -30,38 +30,47 @@ st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
     st.markdown(f"### {name}")
 
-    available_sizes = [v for v in variants if v.get("quantity", 0) > 0]
-    if not available_sizes:
-        st.warning("🚫 Out of stock for all sizes.")
+    # Filter available variants (quantity > 0)
+    available_variants = [v for v in variants if v.get("quantity", 0) > 0]
+    if not available_variants:
+        st.warning("🚫 Out of stock for all variants.")
         continue
 
-    # Initialize or retrieve selected size from session state
-    size_state_key = f"size_{name}"
-    if size_state_key not in st.session_state or st.session_state[size_state_key] not in [v["size"] for v in available_sizes]:
-        st.session_state[size_state_key] = available_sizes[0]["size"]
-    selected_size = st.session_state[size_state_key]
+    # Handle products with or without sizes
+    has_sizes = any(v.get("size") for v in available_variants)
+    
+    if has_sizes:
+        # Initialize or retrieve selected size from session state
+        size_state_key = f"size_{name}"
+        if size_state_key not in st.session_state or st.session_state[size_state_key] not in [v["size"] for v in available_variants if v.get("size")]:
+            st.session_state[size_state_key] = next((v["size"] for v in available_variants if v.get("size")), None)
+        selected_size = st.session_state[size_state_key]
 
-    # Safely find selected variant; fallback if missing
-    selected_variant = next((v for v in available_sizes if v["size"] == selected_size), available_sizes[0])
+        # Safely find selected variant
+        selected_variant = next((v for v in available_variants if v.get("size") == selected_size), available_variants[0])
+        
+        # Size selection with buttons
+        size_cols = st.columns(len([v for v in available_variants if v.get("size")]))
+        for i, variant in enumerate(available_variants):
+            if variant.get("size"):  # Only show size buttons for variants with sizes
+                with size_cols[i]:
+                    if st.button(variant["size"], key=f"size_btn_{name}_{variant['size']}"):
+                        st.session_state[size_state_key] = variant["size"]
+                    if selected_size == variant["size"]:
+                        st.markdown(
+                            f"<div style='text-align:center; background-color:#444; color:#fff; padding:5px; border-radius:4px;'>{variant['size']}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f"<div style='text-align:center; padding:5px; border:1px solid #666; border-radius:4px;'>{variant['size']}</div>",
+                            unsafe_allow_html=True,
+                        )
+    else:
+        # No sizes, use the first (and only) variant
+        selected_variant = available_variants[0]
 
-    # Size selection with buttons
-    size_cols = st.columns(len(available_sizes))
-    for i, variant in enumerate(available_sizes):
-        with size_cols[i]:
-            if st.button(variant["size"], key=f"size_btn_{name}_{variant['size']}"):
-                st.session_state[size_state_key] = variant["size"]
-                st.experimental_rerun()
-            if selected_size == variant["size"]:
-                st.markdown(
-                    f"<div style='text-align:center; background-color:#444; color:#fff; padding:5px; border-radius:4px;'>{variant['size']}</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f"<div style='text-align:center; padding:5px; border:1px solid #666; border-radius:4px;'>{variant['size']}</div>",
-                    unsafe_allow_html=True,
-                )
-
+    # Product details
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         image_path = f"data/images/{selected_variant['id']}.jpg"
@@ -95,7 +104,7 @@ for name, variants in grouped.items():
             if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < quantity_available:
                 st.session_state[qty_key] += 1
 
-        if st.button("ADD TO CART", key=f"add_{selected_variant['id']}", help="Add item to cart"):
+        if st.button("ADD TO CART", key=f"add_{selected_variant['id']}"):
             qty = st.session_state[qty_key]
             in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
             available_stock = quantity_available - in_cart_qty
@@ -105,7 +114,7 @@ for name, variants in grouped.items():
                 item = {
                     "id": selected_variant["id"],
                     "name": selected_variant["name"],
-                    "size": selected_variant["size"],
+                    "size": selected_variant.get("size", ""),
                     "price": price,
                     "quantity": qty,
                 }
@@ -113,7 +122,7 @@ for name, variants in grouped.items():
                     st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                 else:
                     st.session_state.cart[selected_variant["id"]] = item
-                st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})")
+                st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant.get('size', 'N/A')})")
 
 # ------------------ Cart Display ------------------ #
 st.markdown("---")
