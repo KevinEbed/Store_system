@@ -106,11 +106,11 @@ st.markdown(
     .product-title {
         margin-bottom: 5px;
     }
-    .stSelectbox {
-        width: 80px !important; /* Shorter width to avoid being too long */
+.stSelectbox {
+        width: 80px !important; /* Shorter width */
         border-radius: 10px !important;
-        background-color: #2a2a2a !important; /* Dark background */
-        color: #fff !important; /* White text */
+        background-color: #2a2a2a !important;
+        color: #fff !important;
         border: 2px solid #444 !important;
     }
     .stSelectbox > div > div {
@@ -120,6 +120,13 @@ st.markdown(
     .stSelectbox label {
         color: #fff !important;
         font-size: 14px !important;
+    }
+    /* Hide search/filter input (simulating non-searchable) */
+    .stSelectbox div[role="combobox"] {
+        padding: 0 !important;
+    }
+    .stSelectbox div[role="listbox"] {
+        max-height: 150px !important; /* Limit dropdown height */
     }
     </style>
     """,
@@ -164,29 +171,37 @@ def render_size_quantities(name, variants):
         all_sizes = sorted(set(v["size"] for v in variants))
         available_sizes = sorted(set(v["size"] for v in available_variants))
         session_key = f"selected_size_{name}"
+        size_locked_key = f"size_locked_{name}"
 
-        # Initialize selected size
-        if session_key not in st.session_state or st.session_state[session_key] not in available_sizes:
+        # Initialize selected size and lock status
+        if session_key not in st.session_state:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
+        if size_locked_key not in st.session_state:
+            st.session_state[size_locked_key] = False
 
         # Use columns to place size and quantity side by side
         col1, col2 = st.columns(2)
 
         with col1:
-            # Size dropdown
-            selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
-            st.session_state[session_key] = selected_size
+            # Size dropdown (lock after first selection)
+            if not st.session_state[size_locked_key]:
+                selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
+                if selected_size != st.session_state[session_key]:
+                    st.session_state[session_key] = selected_size
+                    st.session_state[size_locked_key] = True
+            else:
+                st.write(f"Size: {st.session_state[session_key]} (Locked)")
 
         with col2:
-            # Quantity dropdown for selected size
-            if selected_size and selected_size in available_sizes:
-                variant = next(v for v in variants if v["size"] == selected_size)
-                qty_key = f"qty_{name}_{selected_size}"
+            # Quantity dropdown for selected size with dynamic stock
+            if st.session_state[session_key] and st.session_state[session_key] in available_sizes:
+                variant = next(v for v in variants if v["size"] == st.session_state[session_key])
+                qty_key = f"qty_{name}_{st.session_state[session_key]}"
                 if qty_key not in st.session_state.quantities:
                     st.session_state.quantities[qty_key] = 1
                 
                 quantities = list(range(1, variant["quantity"] + 1))
-                selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{selected_size}")
+                selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{st.session_state[session_key]}")
                 st.session_state.quantities[qty_key] = selected_qty
 
     else:
@@ -200,7 +215,6 @@ def render_size_quantities(name, variants):
         quantities = list(range(1, variant["quantity"] + 1))
         selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
         st.session_state.quantities[qty_key] = selected_qty
-
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
     available_variants = [v for v in variants if v["quantity"] > 0]
