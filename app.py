@@ -55,13 +55,6 @@ st.markdown(
         cursor: not-allowed;
         border-color: #666666;
     }
-    .qty-controls {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        margin-top: 10px;
-        flex-direction: row;
-    }
     .qty-button {
         background-color: transparent;
         color: white;
@@ -185,17 +178,17 @@ def render_size_quantities(name, variants):
             if qty_key not in st.session_state.quantities:
                 st.session_state.quantities[qty_key] = 1
                 
-            st.markdown('<div class="qty-controls">', unsafe_allow_html=True)
-            if st.button("−", key=f"dec_{qty_key}"):
-                st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-                st.rerun()
-            
-            st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
-            
-            if st.button("+", key=f"inc_{qty_key}"):
-                st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+            col_q1, col_q2, col_q3 = st.columns([1, 1, 1])  # Use columns for horizontal layout
+            with col_q1:
+                if st.button("−", key=f"dec_{qty_key}", help="Decrease quantity"):
+                    st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
+                    st.rerun()
+            with col_q2:
+                st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
+            with col_q3:
+                if st.button("+", key=f"inc_{qty_key}", help="Increase quantity"):
+                    st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+                    st.rerun()
     else:
         # For items without sizes
         variant = variants[0]
@@ -204,17 +197,17 @@ def render_size_quantities(name, variants):
             st.session_state.quantities[qty_key] = 1
             
         st.markdown("**Quantity**", unsafe_allow_html=True)
-        st.markdown('<div class="qty-controls">', unsafe_allow_html=True)
-        if st.button("−", key=f"dec_{qty_key}"):
-            st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-            st.rerun()
-        
-        st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
-        
-        if st.button("+", key=f"inc_{qty_key}"):
-            st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])  # Use columns for horizontal layout
+        with col_q1:
+            if st.button("−", key=f"dec_{qty_key}", help="Decrease quantity"):
+                st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
+                st.rerun()
+        with col_q2:
+            st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
+        with col_q3:
+            if st.button("+", key=f"inc_{qty_key}", help="Increase quantity"):
+                st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+                st.rerun()
 
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
