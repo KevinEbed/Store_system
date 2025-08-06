@@ -182,7 +182,7 @@ if st.session_state.cart:
             with get_connection() as conn:
                 # Enable WAL and set busy timeout
                 conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA busy_timeout=60000;")  # Increased to 60 seconds
+                conn.execute("PRAGMA busy_timeout=60000;")  # 60 seconds
 
                 # Reload products within the same connection to ensure consistency
                 cursor = conn.execute("SELECT id FROM products")
@@ -196,7 +196,7 @@ if st.session_state.cart:
                 else:
                     success = False
                     attempt = 0
-                    max_attempts = 5  # Increased retries
+                    max_attempts = 5
                     while attempt < max_attempts and not success:
                         attempt += 1
                         try:
@@ -208,7 +208,7 @@ if st.session_state.cart:
                             err_str = str(e).lower()
                             conn.rollback()
                             if "locked" in err_str and attempt < max_attempts:
-                                backoff = 1.0 * attempt  # Increased backoff time
+                                backoff = 1.0 * attempt
                                 time.sleep(backoff)
                             else:
                                 st.error(f"❌ Checkout failed: {e}")
