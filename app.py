@@ -167,7 +167,7 @@ if st.session_state.cart:
                 st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                 st.session_state.cart = {}
                 st.session_state.checkout_in_progress = False
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.session_state.checkout_in_progress = False
 else:
