@@ -22,8 +22,8 @@ st.markdown(
         background-color: #2a2a2a;
         border: 1px solid #444;
         border-radius: 8px;
-        padding: 10px;
-        margin-bottom: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
     }
     .warning-box {
         background-color: #ff4444;
@@ -41,93 +41,82 @@ st.markdown(
         padding: 8px 12px;
         text-align: center;
         font-weight: bold;
-        margin: 2px;
-        display: inline-block;
+        margin: 0 5px 5px 0;
         cursor: pointer;
         transition: all 0.3s;
+        min-width: 40px;
     }
     .size-button.selected {
-        border-color: #00cc00;
         background-color: #00cc00;
+        border-color: #00cc00;
     }
     .size-button.out-of-stock {
         opacity: 0.5;
         cursor: not-allowed;
         border-color: #666666;
     }
+    .qty-controls {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 10px;
+    }
     .qty-button {
         background-color: transparent;
         color: white;
         border: 2px solid white;
         border-radius: 5px;
-        padding: 8px 12px;
-        text-align: center;
-        font-size: 16px;
-        cursor: pointer;
-        transition: all 0.3s;
-        display: inline-block;
-        margin: 0 2px;
         width: 40px;
         height: 40px;
+        font-size: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
     }
     .qty-button:hover {
         background-color: #333333;
     }
     .qty-display {
         background-color: transparent;
-        color: #ffffff;
+        color: white;
         border: 2px solid white;
         border-radius: 5px;
-        padding: 8px 12px;
-        text-align: center;
-        font-size: 16px;
-        display: inline-block;
-        margin: 0 2px;
         width: 40px;
         height: 40px;
-        line-height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 5px;
     }
     .add-to-cart-btn {
         background-color: #000000;
         color: white;
         border: 2px solid white;
         border-radius: 5px;
-        padding: 10px 20px;
-        text-align: center;
-        font-size: 16px;
+        padding: 10px;
         font-weight: bold;
-        cursor: pointer;
-        transition: all 0.3s;
-        display: block;
         width: 100%;
         margin-top: 10px;
+        cursor: pointer;
     }
     .add-to-cart-btn:hover {
         background-color: #333333;
     }
-    .size-qty-container {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 10px;
-    }
-    .size-container {
-        display: flex;
-        gap: 5px;
-    }
-    .qty-container {
-        display: flex;
-        align-items: center;
-        gap: 5px;
+    .size-qty-section {
+        margin-top: 10px;
     }
     .product-info {
         margin-bottom: 10px;
+    }
+    .product-title {
+        margin-bottom: 5px;
     }
     </style>
     """,
     unsafe_allow_html=True
 )
-st.title("🛍️ Clothing Store – Point of Sale")
+st.title("🛍️ Products")
 
 # ------------------ Init ------------------ #
 init_db()
@@ -157,70 +146,83 @@ for p in products:
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
 def render_size_quantities(name, variants):
-    st.markdown("**Size & Quantity**", unsafe_allow_html=True)
     available_variants = [v for v in variants if v["quantity"] > 0]
-    all_sizes = sorted(set(v["size"] for v in variants))
-    available_sizes = sorted(set(v["size"] for v in available_variants))
-    session_key = f"selected_size_{name}"
+    has_sizes = len(set(v["size"] for v in variants)) > 1
+    
+    if has_sizes:
+        st.markdown("**Size & Quantity**", unsafe_allow_html=True)
+        all_sizes = sorted(set(v["size"] for v in variants))
+        available_sizes = sorted(set(v["size"] for v in available_variants))
+        session_key = f"selected_size_{name}"
 
-    # Initialize or reset selected size and quantities
-    if session_key not in st.session_state or st.session_state.get(session_key) not in available_sizes:
-        st.session_state[session_key] = available_sizes[0] if available_sizes else None
-        st.session_state.quantities = {size: 1 for size in all_sizes}
-        st.session_state.warnings[name] = ""
+        # Initialize selected size
+        if session_key not in st.session_state or st.session_state[session_key] not in available_sizes:
+            st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-    # Size buttons
-    st.markdown('<div class="size-qty-container">', unsafe_allow_html=True)
-    st.markdown('<div class="size-container">', unsafe_allow_html=True)
-    for size in all_sizes:
-        selected = st.session_state.get(session_key) == size
-        in_stock = size in available_sizes
-        button_class = "size-button" + (" selected" if selected else "") + (" out-of-stock" if not in_stock else "")
-        
-        if in_stock:
-            if st.button(size, key=f"{name}_{size}"):
-                st.session_state[session_key] = size
-                st.session_state.warnings[name] = ""
-                st.rerun()
-        else:
-            st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        # Size buttons
+        cols = st.columns(len(all_sizes))
+        for i, size in enumerate(all_sizes):
+            selected = st.session_state.get(session_key) == size
+            in_stock = size in available_sizes
+            button_class = "size-button" + (" selected" if selected else "") + (" out-of-stock" if not in_stock else "")
+            
+            with cols[i]:
+                if in_stock:
+                    if st.button(size, key=f"{name}_{size}"):
+                        st.session_state[session_key] = size
+                        st.session_state.warnings[name] = ""
+                        st.experimental_rerun()
+                else:
+                    st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
 
-    # Quantity selector
-    selected_size = st.session_state.get(session_key)
-    if selected_size and selected_size in available_sizes:
-        variant = next(v for v in variants if v["size"] == selected_size)
-        qty_key = f"qty_{name}_{selected_size}"
+        # Quantity controls for selected size
+        selected_size = st.session_state.get(session_key)
+        if selected_size and selected_size in available_sizes:
+            variant = next(v for v in variants if v["size"] == selected_size)
+            qty_key = f"qty_{name}_{selected_size}"
+            if qty_key not in st.session_state.quantities:
+                st.session_state.quantities[qty_key] = 1
+                
+            st.markdown('<div class="qty-controls">', unsafe_allow_html=True)
+            if st.button("−", key=f"dec_{qty_key}"):
+                st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
+                st.experimental_rerun()
+            
+            st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
+            
+            if st.button("+", key=f"inc_{qty_key}"):
+                st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+                st.experimental_rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        # For items without sizes
+        variant = variants[0]
+        qty_key = f"qty_{name}"
         if qty_key not in st.session_state.quantities:
             st.session_state.quantities[qty_key] = 1
             
-        st.markdown('<div class="qty-container">', unsafe_allow_html=True)
+        st.markdown("**Quantity**", unsafe_allow_html=True)
+        st.markdown('<div class="qty-controls">', unsafe_allow_html=True)
         if st.button("−", key=f"dec_{qty_key}"):
             st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-            st.rerun()
+            st.experimental_rerun()
         
         st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
         
         if st.button("+", key=f"inc_{qty_key}"):
             st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-            st.rerun()
+            st.experimental_rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # ------------------ Product Display ------------------ #
-st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
     available_variants = [v for v in variants if v["quantity"] > 0]
-    if not available_variants:
-        st.markdown(f"<div class='product-card'><h3>{name}</h3><p>Out of stock for all sizes.</p></div>", unsafe_allow_html=True)
-        continue
-
-    st.markdown(f"<div class='product-card'><h3>{name}</h3>", unsafe_allow_html=True)
+    
+    st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1, 2])
+    
     with col1:
         image_path = f"data/images/{name.replace(' ', '_').lower()}.jpg"
-        if not os.path.exists(image_path):
-            image_path = "data/images/placeholder.jpg"
         if os.path.exists(image_path):
             st.image(image_path, width=120, use_container_width=True)
         else:
@@ -234,28 +236,40 @@ for name, variants in grouped.items():
 
     with col3:
         render_size_quantities(name, variants)
-        selected_size = st.session_state.get(f"selected_size_{name}")
-        selected_variant = next((v for v in available_variants if v["size"] == selected_size), available_variants[0])
-        qty_key = f"qty_{name}_{selected_size}"
-        if st.button("Add to Cart", key=f"add_{selected_variant['id']}"):
-            qty = st.session_state.quantities.get(qty_key, 1)
-            in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
-            available_stock = selected_variant["quantity"] - in_cart_qty
-            if qty > available_stock:
-                st.session_state.warnings[name] = f"Only {available_stock} left in stock"
-            else:
-                item = {
-                    "id": selected_variant["id"],
-                    "name": selected_variant["name"],
-                    "size": selected_variant["size"],
-                    "price": selected_variant["price"],
-                    "quantity": qty
-                }
-                if selected_variant["id"] in st.session_state.cart:
-                    st.session_state.cart[selected_variant["id"]]["quantity"] += qty
-                else:
-                    st.session_state.cart[selected_variant["id"]] = item
-                st.session_state.warnings[name] = f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})"
+        
+        if available_variants:
+            if len(variants) > 1:  # Has sizes
+                selected_size = st.session_state.get(f"selected_size_{name}")
+                selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
+            else:  # No sizes
+                selected_variant = available_variants[0]
+                qty_key = f"qty_{name}"
+            
+            if selected_variant:
+                if st.button("Add to Cart", key=f"add_{selected_variant['id']}"):
+                    qty = st.session_state.quantities.get(
+                        f"qty_{name}_{selected_variant['size']}" if len(variants) > 1 else f"qty_{name}", 
+                        1
+                    )
+                    in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
+                    available_stock = selected_variant["quantity"] - in_cart_qty
+                    
+                    if qty > available_stock:
+                        st.session_state.warnings[name] = f"Only {available_stock} left in stock"
+                    else:
+                        item = {
+                            "id": selected_variant["id"],
+                            "name": selected_variant["name"],
+                            "size": selected_variant["size"] if len(variants) > 1 else "",
+                            "price": selected_variant["price"],
+                            "quantity": qty
+                        }
+                        if selected_variant["id"] in st.session_state.cart:
+                            st.session_state.cart[selected_variant["id"]]["quantity"] += qty
+                        else:
+                            st.session_state.cart[selected_variant["id"]] = item
+                        st.session_state.warnings[name] = f"✅ Added {qty} x {selected_variant['name']}" + \
+                            (f" ({selected_variant['size']})" if len(variants) > 1 else "")
 
     if st.session_state.warnings.get(name):
         st.markdown(f"<div class='warning-box'>{st.session_state.warnings[name]}</div>", unsafe_allow_html=True)
@@ -318,7 +332,7 @@ if st.session_state.cart:
                             st.session_state.cart = {}
                             st.session_state.checkout_in_progress = False
                             st.session_state.warnings["checkout"] = ""
-                            st.rerun()
+                            st.experimental_rerun()
                         else:
                             st.session_state.checkout_in_progress = False
             except Exception as outer_e:
