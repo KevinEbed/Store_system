@@ -17,8 +17,13 @@ if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 
 def reload_products():
-    with get_connection() as conn:
-        return get_products(conn)  # Ensure get_products uses the connection
+    try:
+        with get_connection() as conn:
+            products = get_products(conn) if 'conn' in get_products.__code__.co_varnames else get_products()
+            return products if products else []
+    except Exception as e:
+        st.error(f"Error loading products: {str(e)}")
+        return []
 
 products = reload_products()
 
