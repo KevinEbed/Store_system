@@ -171,7 +171,7 @@ def render_size_quantities(name, variants):
                 else:
                     st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
 
-        # Quantity controls for selected size in a single bar
+        # Quantity dropdown for selected size
         selected_size = st.session_state.get(session_key)
         if selected_size and selected_size in available_sizes:
             variant = next(v for v in variants if v["size"] == selected_size)
@@ -179,33 +179,9 @@ def render_size_quantities(name, variants):
             if qty_key not in st.session_state.quantities:
                 st.session_state.quantities[qty_key] = 1
             
-            st.markdown(
-                f"""
-                <div style='display: flex; align-items: center; border: 2px solid #ffffff; border-radius: 5px; padding: 5px;'>
-                    <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("decrease"))'>−</button>
-                    <span style='padding: 0 15px; font-size: 20px; color: white;'>{st.session_state.quantities[qty_key]}</span>
-                    <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("increase"))'>+</button>
-                </div>
-                <script>
-                    const qtyDiv = document.currentScript.previousElementSibling;
-                    qtyDiv.querySelector('button:nth-child(1)').addEventListener('decrease', () => {{
-                        let qty = {st.session_state.quantities[qty_key]};
-                        if (qty > 1) {{
-                            qty -= 1;
-                            parent.window.location.reload();
-                        }}
-                    }});
-                    qtyDiv.querySelector('button:nth-child(3)').addEventListener('increase', () => {{
-                        let qty = {st.session_state.quantities[qty_key]};
-                        if (qty < {variant["quantity"]}) {{
-                            qty += 1;
-                            parent.window.location.reload();
-                        }}
-                    }});
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
+            quantities = list(range(1, variant["quantity"] + 1))
+            selected_qty = st.selectbox("Quantity:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{selected_size}")
+            st.session_state.quantities[qty_key] = selected_qty
 
     else:
         # For items without sizes
@@ -215,33 +191,9 @@ def render_size_quantities(name, variants):
             st.session_state.quantities[qty_key] = 1
             
         st.markdown("**Quantity**", unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div style='display: flex; align-items: center; border: 2px solid #ffffff; border-radius: 5px; padding: 5px;'>
-                <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("decrease"))'>−</button>
-                <span style='padding: 0 15px; font-size: 20px; color: white;'>{st.session_state.quantities[qty_key]}</span>
-                <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("increase"))'>+</button>
-            </div>
-            <script>
-                const qtyDiv = document.currentScript.previousElementSibling;
-                qtyDiv.querySelector('button:nth-child(1)').addEventListener('decrease', () => {{
-                    let qty = {st.session_state.quantities[qty_key]};
-                    if (qty > 1) {{
-                        qty -= 1;
-                        parent.window.location.reload();
-                    }}
-                }});
-                qtyDiv.querySelector('button:nth-child(3)').addEventListener('increase', () => {{
-                    let qty = {st.session_state.quantities[qty_key]};
-                    if (qty < {variant["quantity"]}) {{
-                        qty += 1;
-                        parent.window.location.reload();
-                    }}
-                }});
-            </script>
-            """,
-            unsafe_allow_html=True
-        )
+        quantities = list(range(1, variant["quantity"] + 1))
+        selected_qty = st.selectbox("Quantity:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
+        st.session_state.quantities[qty_key] = selected_qty
 
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
