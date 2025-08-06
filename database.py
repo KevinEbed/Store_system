@@ -100,14 +100,18 @@ def bulk_upload_products(df, overwrite=False):
     finally:
         conn.close()
 
-def save_order(cart, total_amount):
-    conn = get_connection()
+def save_order(cart, total_amount, conn=None):
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+        
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
-        c.execute("BEGIN")
         c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
         order_id = c.lastrowid
+        
         for item in cart:
             c.execute("""
                 INSERT INTO order_items (order_id, product_id, name, size, price, quantity)
@@ -120,24 +124,25 @@ def save_order(cart, total_amount):
                 item["price"],
                 item["quantity"]
             ))
-            update_product_quantity(item["id"], item["quantity"])
+            
+            # Update product quantity
+            c.execute("""
+                UPDATE products 
+                SET quantity = quantity - ? 
+                WHERE id = ? AND quantity >= ?
+            """, (item["quantity"], item["id"], item["quantity"]))
+            
+            if c.rowcount == 0:
+                raise ValueError(f"Insufficient stock for product ID {item['id']}")
+                
         conn.commit()
         return order_id
     except Exception:
         conn.rollback()
         raise
     finally:
-        conn.close()
-
-def get_order_history():
-    conn = get_connection()
-    try:
-        cursor = conn.execute("SELECT id, timestamp, total FROM orders ORDER BY id DESC")
-        rows = cursor.fetchall()
-        columns = ["id", "timestamp", "total"]
-        return [dict(zip(columns, row)) for row in rows]
-    finally:
-        conn.close()
+        if close_conn:
+            conn.close()
 
 def get_order_items(order_id):
     conn = get_connection()
