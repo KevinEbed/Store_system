@@ -271,15 +271,11 @@ for name, variants in grouped.items():
                             st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                         else:
                             st.session_state.cart[selected_variant["id"]] = item
-                        # Removed warning message setting
+                        # Show temporary message with size
+                        st.success(f"Size: {selected_variant['size'] if selected_variant['size'] else 'N/A'} added to cart", icon="✅")
                     else:
-                        # Optionally handle out-of-stock case without warning
-                        pass
+                        st.warning(f"Only {available_stock} left in stock", icon="⚠️")
 
-    if st.session_state.warnings.get(name):
-        st.markdown(f"<div class='warning-box'>{st.session_state.warnings[name]}</div>", unsafe_allow_html=True)
-        if st.button("✖ Clear Warning", key=f"clear_warning_{name}"):
-            st.session_state.warnings[name] = ""
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------ Cart Display ------------------ #
