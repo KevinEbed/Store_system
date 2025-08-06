@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from database import init_db, get_products, save_order
 
-st.set_page_config(page_title="🛍️ POS System", layout="wide")
+st.set_page_config(page_title="🛍️ POS System", layout="wide", theme="dark")
 st.title("🛍️ Clothing Store – Point of Sale")
 
 # ------------------ Init ------------------ #
@@ -47,7 +47,7 @@ for name, variants in grouped.items():
         with size_cols[i]:
             if st.button(variant["size"], key=f"size_btn_{name}_{variant['size']}"):
                 st.session_state[f"size_{name}"] = variant["size"]
-                st.experimental_rerun()  # Re-run to update the selected variant
+                st.rerun()  # Use st.rerun() instead of experimental_rerun
             if selected_size == variant["size"]:
                 st.markdown(f"<div style='text-align:center; background-color:#000; color:#fff; padding:5px;'>{variant['size']}</div>", unsafe_allow_html=True)
             else:
@@ -154,7 +154,7 @@ if st.session_state.cart:
                 st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                 st.session_state.cart = {}
                 st.session_state.checkout_in_progress = False
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.session_state.checkout_in_progress = False
 else:
