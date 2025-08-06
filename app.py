@@ -136,8 +136,7 @@ for name, variants in grouped.items():
                 st.warning(f"Only {available_stock} left in stock")
             else:
                 item = {
-                    "id": selected_variant Speculative Type: int
-                    selected_variant["id"],
+                    "id": selected_variant["id"],
                     "name": selected_variant["name"],
                     "size": selected_variant["size"],
                     "price": selected_variant["price"],
@@ -212,7 +211,7 @@ if st.session_state.cart:
                         st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                         st.session_state.cart = {}
                         st.session_state.checkout_in_progress = False
-                        st.rerun()  # Replaced experimental_rerun
+                        st.rerun()
                     else:
                         st.session_state.checkout_in_progress = False
         except Exception as outer_e:
