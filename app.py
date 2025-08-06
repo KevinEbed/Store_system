@@ -162,6 +162,7 @@ for p in products:
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
 # Inside render_size_quantities function
+# Inside render_size_quantities function
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -183,12 +184,14 @@ def render_size_quantities(name, variants):
         col1, col2 = st.columns(2)
 
         with col1:
-            # Size dropdown (lock after first selection)
+            # Size dropdown (lock after first selection with confirmation)
             if not st.session_state[size_locked_key]:
                 selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
                 if selected_size != st.session_state[session_key]:
-                    st.session_state[session_key] = selected_size
-                    st.session_state[size_locked_key] = True
+                    if st.button("Lock Size", key=f"lock_size_{name}"):
+                        st.session_state[session_key] = selected_size
+                        st.session_state[size_locked_key] = True
+                        st.rerun()
             else:
                 st.write(f"Size: {st.session_state[session_key]} (Locked)")
 
