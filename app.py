@@ -187,8 +187,8 @@ def render_size_quantities(name, variants):
                 st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
             with col_q3:
                 if st.button("+", key=f"inc_{qty_key}", help="Increase quantity"):
-                st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-                st.rerun()
+                    st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+                    st.rerun()
     else:
         # For items without sizes
         variant = variants[0]
