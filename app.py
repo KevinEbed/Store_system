@@ -5,7 +5,41 @@ import time
 from datetime import datetime
 from database import init_db, get_products, save_order, get_connection
 
-st.set_page_config(page_title="🛍️ POS System", layout="wide")
+# Set page config with dark theme
+st.set_page_config(
+    page_title="🛍️ POS System",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #1a1a1a;
+        color: #ffffff;
+    }
+    .stButton>button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .stButton>button:hover {
+        background-color: #0056b3;
+    }
+    .product-card {
+        background-color: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 st.title("🛍️ Clothing Store – Point of Sale")
 
 # ------------------ Init ------------------ #
@@ -31,119 +65,105 @@ for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
 # ------------------ Helper: Render Size Buttons ------------------ #
-def render_size_buttons(name, available_sizes):
-    st.markdown("**SIZE**")
-    if not available_sizes:
-        st.warning(f"No available sizes for {name}")
-        return
-    col_btns = st.columns(len(available_sizes))
+def render_size_buttons(name, all_sizes, available_sizes):
+    st.markdown("**Size**", unsafe_allow_html=True)
+    cols = st.columns(len(all_sizes))
     session_key = f"selected_size_{name}"
 
     # Initialize or reset selected size to an available one
     if session_key not in st.session_state or st.session_state.get(session_key) not in available_sizes:
-        st.session_state[session_key] = available_sizes[0]  # Default to first available size
+        st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-    for i, s in enumerate(available_sizes):
-        selected = st.session_state.get(session_key) == s
-        in_stock = s in available_sizes  # All sizes in available_sizes are in stock by definition
+    for i, size in enumerate(all_sizes):
+        selected = st.session_state.get(session_key) == size
+        in_stock = size in available_sizes
 
-        # Styling based on selection and stock status
-        bg = "#333" if selected else "#fff"
-        color = "#fff" if selected else "#000"
-        border = "#00cc00" if selected else "#444"  # Light green outline for selected
+        bg = "#00cc00" if selected and in_stock else "#2a2a2a"
+        color = "#ffffff" if selected else "#cccccc"
+        border = "#00cc00" if selected else "#444"
         opacity = "0.5" if not in_stock else "1"
         cursor = "not-allowed" if not in_stock else "pointer"
-        content = "X" if not in_stock else s  # Add "X" for out-of-stock
+        content = "X" if not in_stock else size
 
         html = f"""
         <div style="
-            background-color:{bg};
-            color:{color};
-            border:3px solid {border};
-            border-radius:6px;
-            padding:8px;
-            text-align:center;
-            font-weight:bold;
-            opacity:{opacity};
-            cursor:{cursor};
-            width:40px;
-            height:40px;
-            display:flex;
-            align-items:center;
-            justify-content:center;
+            background-color: {bg};
+            color: {color};
+            border: 2px solid {border};
+            border-radius: 5px;
+            padding: 8px 12px;
+            text-align: center;
+            font-weight: bold;
+            opacity: {opacity};
+            cursor: {cursor};
+            display: inline-block;
+            margin: 2px;
         ">
-        {content}
+            {content}
         </div>
         """
-
         if in_stock:
-            if col_btns[i].button(s, key=f"{name}_{s}"):
-                st.session_state[session_key] = s
+            if cols[i].button(size, key=f"{name}_{size}", help="Select size"):
+                st.session_state[session_key] = size
         else:
-            col_btns[i].markdown(html, unsafe_allow_html=True)
+            cols[i].markdown(html, unsafe_allow_html=True)
 
 # ------------------ Product Display ------------------ #
 st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
-    st.markdown(f"### {name}")
-
     available_variants = [v for v in variants if v["quantity"] > 0]
     if not available_variants:
-        st.warning("🚫 Out of stock for all sizes.")
+        st.markdown(f"<div class='product-card'><h3>{name}</h3><p style='color: #ff4444;'>Out of stock for all sizes.</p></div>", unsafe_allow_html=True)
         continue
 
-    available_sizes = sorted(set(v["size"] for v in available_variants))  # Unique sorted sizes
-    all_sizes = sorted(set(v["size"] for v in variants))  # All sizes, including out-of-stock
-    render_size_buttons(name, all_sizes)  # Show all sizes, marking out-of-stock with "X"
-
+    all_sizes = sorted(set(v["size"] for v in variants))
+    available_sizes = sorted(set(v["size"] for v in available_variants))
     selected_size = st.session_state.get(f"selected_size_{name}")
-    selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
-    if not selected_variant:
-        st.warning(f"❌ Selected size ({selected_size}) is currently unavailable for {name}. Resetting to an available size.")
-        st.session_state[f"selected_size_{name}"] = available_sizes[0]  # Reset to first available size
-        selected_variant = next((v for v in available_variants if v["size"] == available_sizes[0]), None)
+    selected_variant = next((v for v in available_variants if v["size"] == selected_size), None) if selected_size else available_variants[0]
 
+    st.markdown(f"<div class='product-card'><h3>{name}</h3>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         image_path = f"data/images/{selected_variant['id']}.jpg"
         if os.path.exists(image_path):
-            st.image(image_path, width=120)
+            st.image(image_path, width=120, use_column_width=True)
         else:
             placeholder = "data/images/placeholder.jpg"
             if os.path.exists(placeholder):
-                st.image(placeholder, width=120, caption="No image")
+                st.image(placeholder, width=120, caption="No image", use_column_width=True)
             else:
                 st.markdown("🖼 No image")
 
     with col2:
         st.markdown(f"**Price:** {selected_variant['price']} EGP")
-        st.markdown(f"**Stock Available:** {selected_variant['quantity']}")
+        st.markdown(f"**Stock:** {selected_variant['quantity']}")
 
     with col3:
+        render_size_buttons(name, all_sizes, available_sizes)
         qty_key = f"qty_{selected_variant['id']}"
         if qty_key not in st.session_state:
             st.session_state[qty_key] = 1
 
-        col_a, col_b, col_c = st.columns([1, 1, 1])
-        with col_a:
+        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
+        with col_q1:
             st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding:10px; background-color:#007bff; color:white; border-radius:5px;'>-</div>",
+                f"<div style='text-align:center; font-size:18px; padding:8px; background-color:#007bff; color:white; border-radius:5px;'>-</div>",
                 unsafe_allow_html=True
             )
-            if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
-                st.session_state[qty_key] -= 1
-        with col_b:
+            if st.button("-", key=f"dec_{selected_variant['id']}", help="Decrease quantity"):
+                st.session_state[qty_key] = max(1, st.session_state[qty_key] - 1)
+        with col_q2:
             st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding-top:10px'>{st.session_state[qty_key]}</div>",
-                unsafe_allow_html=True,
-            )
-        with col_c:
-            st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding:10px; background-color:#007bff; color:white; border-radius:5px;'>+</div>",
+                f"<div style='text-align:center; font-size:18px; padding:8px;'>{st.session_state[qty_key]}</div>",
                 unsafe_allow_html=True
             )
-            if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
-                st.session_state[qty_key] += 1
+        with col_q3:
+            st.markdown(
+                f"<div style='text-align:center; font-size:18px; padding:8px; background-color:#007bff; color:white; border-radius:5px;'>+</div>",
+                unsafe_allow_html=True
+            )
+            if st.button("+", key=f"inc_{selected_variant['id']}", help="Increase quantity"):
+                st.session_state[qty_key] = min(selected_variant["quantity"], st.session_state[qty_key] + 1)
 
         if st.button("➕ Add to Cart", key=f"add_{selected_variant['id']}"):
             qty = st.session_state[qty_key]
@@ -165,6 +185,8 @@ for name, variants in grouped.items():
                     st.session_state.cart[selected_variant["id"]] = item
                 st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 # ------------------ Cart Display ------------------ #
 st.markdown("---")
 st.markdown("## 🛒 Cart")
@@ -173,66 +195,59 @@ if st.session_state.cart:
     cart_items = list(st.session_state.cart.values())
     cart_df = pd.DataFrame(cart_items)
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
+    st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'>", unsafe_allow_html=True)
     st.dataframe(cart_df[["name", "size", "price", "quantity", "total"]], use_container_width=True)
-
     total = cart_df["total"].sum()
-    st.markdown(f"### 💰 Total: {total} EGP")
-
-    if st.button("🗑️ Clear Cart"):
-        st.session_state.cart = {}
-        st.success("🧹 Cart cleared.")
-
-    if st.session_state.checkout_in_progress:
-        st.info("Processing checkout...")
-    elif st.button("💳 Checkout"):
-        st.session_state.checkout_in_progress = True
-        try:
-            with get_connection() as conn:
-                # Enable WAL and set busy timeout
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA busy_timeout=60000;")  # 60 seconds
-
-                # Reload products within the same connection to ensure consistency
-                cursor = conn.execute("SELECT id FROM products")
-                current_ids = {row[0] for row in cursor.fetchall()}
-
-                # Check for missing product IDs
-                missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
-                if missing:
-                    st.error(f"❌ Product ID(s) missing: {missing}")
-                    st.session_state.checkout_in_progress = False
-                else:
-                    success = False
-                    attempt = 0
-                    max_attempts = 5
-                    while attempt < max_attempts and not success:
-                        attempt += 1
-                        try:
-                            conn.execute("BEGIN IMMEDIATE;")
-                            order_id = save_order(cart_items, total, conn)
-                            conn.commit()
-                            success = True
-                        except Exception as e:
-                            conn.rollback()
-                            err_str = str(e).lower()
-                            if "locked" in err_str and attempt < max_attempts:
-                                time.sleep(1.0 * attempt)
-                            else:
-                                st.error(f"❌ Checkout failed: {e}")
-                                break
-
-                    if success:
-                        st.success("✅ Order complete. Receipt saved.")
-                        st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
-                        st.markdown(f"- 💰 **Total:** `{total} EGP`")
-                        st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-                        st.session_state.cart = {}
+    st.markdown(f"<h3 style='color: #00cc00;'>Total: {total} EGP</h3>", unsafe_allow_html=True)
+    col_c1, col_c2, col_c3 = st.columns([1, 1, 1])
+    with col_c1:
+        if st.button("🗑️ Clear Cart"):
+            st.session_state.cart = {}
+            st.success("🧹 Cart cleared.")
+    with col_c2:
+        if st.button("💳 Checkout"):
+            st.session_state.checkout_in_progress = True
+            try:
+                with get_connection() as conn:
+                    conn.execute("PRAGMA journal_mode=WAL;")
+                    conn.execute("PRAGMA busy_timeout=60000;")
+                    cursor = conn.execute("SELECT id FROM products")
+                    current_ids = {row[0] for row in cursor.fetchall()}
+                    missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
+                    if missing:
+                        st.error(f"❌ Product ID(s) missing: {missing}")
                         st.session_state.checkout_in_progress = False
-                        st.rerun()
                     else:
-                        st.session_state.checkout_in_progress = False
-        except Exception as outer_e:
-            st.error(f"Unexpected error during checkout: {outer_e}")
-            st.session_state.checkout_in_progress = False
+                        success = False
+                        attempt = 0
+                        max_attempts = 5
+                        while attempt < max_attempts and not success:
+                            attempt += 1
+                            try:
+                                conn.execute("BEGIN IMMEDIATE;")
+                                order_id = save_order(cart_items, total, conn)
+                                conn.commit()
+                                success = True
+                            except Exception as e:
+                                conn.rollback()
+                                if "locked" in str(e).lower() and attempt < max_attempts:
+                                    time.sleep(1.0 * attempt)
+                                else:
+                                    st.error(f"❌ Checkout failed: {e}")
+                                    break
+                        if success:
+                            st.success("✅ Order complete. Receipt saved.")
+                            st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+                            st.markdown(f"- 💰 **Total:** `{total} EGP`")
+                            st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+                            st.session_state.cart = {}
+                            st.session_state.checkout_in_progress = False
+                            st.rerun()
+                        else:
+                            st.session_state.checkout_in_progress = False
+            except Exception as outer_e:
+                st.error(f"Unexpected error during checkout: {outer_e}")
+                st.session_state.checkout_in_progress = False
+    st.markdown("</div>", unsafe_allow_html=True)
 else:
-    st.info("🛒 Cart is empty.")
+    st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'><p>🛒 Cart is empty.</p></div>", unsafe_allow_html=True)
