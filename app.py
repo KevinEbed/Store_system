@@ -45,27 +45,34 @@ def render_size_buttons(name, available_sizes):
 
     for i, s in enumerate(available_sizes):
         selected = st.session_state.get(session_key) == s
-        in_stock = s in available_sizes
+        in_stock = s in available_sizes  # All sizes in available_sizes are in stock by definition
 
+        # Styling based on selection and stock status
         bg = "#333" if selected else "#fff"
         color = "#fff" if selected else "#000"
-        border = "#444" if in_stock else "#ccc"
-        opacity = "1" if in_stock else "0.5"
-        cursor = "pointer" if in_stock else "not-allowed"
+        border = "#00cc00" if selected else "#444"  # Light green outline for selected
+        opacity = "0.5" if not in_stock else "1"
+        cursor = "not-allowed" if not in_stock else "pointer"
+        content = "X" if not in_stock else s  # Add "X" for out-of-stock
 
         html = f"""
         <div style="
             background-color:{bg};
             color:{color};
-            border:2px solid {border};
+            border:3px solid {border};
             border-radius:6px;
             padding:8px;
             text-align:center;
             font-weight:bold;
             opacity:{opacity};
             cursor:{cursor};
+            width:40px;
+            height:40px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
         ">
-        {s}
+        {content}
         </div>
         """
 
@@ -86,7 +93,8 @@ for name, variants in grouped.items():
         continue
 
     available_sizes = sorted(set(v["size"] for v in available_variants))  # Unique sorted sizes
-    render_size_buttons(name, available_sizes)
+    all_sizes = sorted(set(v["size"] for v in variants))  # All sizes, including out-of-stock
+    render_size_buttons(name, all_sizes)  # Show all sizes, marking out-of-stock with "X"
 
     selected_size = st.session_state.get(f"selected_size_{name}")
     selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
@@ -118,6 +126,10 @@ for name, variants in grouped.items():
 
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_a:
+            st.markdown(
+                f"<div style='text-align:center; font-size:18px; padding:10px; background-color:#007bff; color:white; border-radius:5px;'>-</div>",
+                unsafe_allow_html=True
+            )
             if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
                 st.session_state[qty_key] -= 1
         with col_b:
@@ -126,6 +138,10 @@ for name, variants in grouped.items():
                 unsafe_allow_html=True,
             )
         with col_c:
+            st.markdown(
+                f"<div style='text-align:center; font-size:18px; padding:10px; background-color:#007bff; color:white; border-radius:5px;'>+</div>",
+                unsafe_allow_html=True
+            )
             if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
                 st.session_state[qty_key] += 1
 
