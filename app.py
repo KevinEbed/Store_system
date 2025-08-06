@@ -60,6 +60,7 @@ st.markdown(
         align-items: center;
         gap: 5px;
         margin-top: 10px;
+        flex-direction: row; /* Changed to horizontal */
     }
     .qty-button {
         background-color: transparent;
@@ -168,7 +169,8 @@ def render_size_quantities(name, variants):
             
             with cols[i]:
                 if in_stock:
-                    if st.button(size, key=f"{name}_{size}"):
+                    st.markdown(f'<div class="{button_class}">{size}</div>', unsafe_allow_html=True)
+                    if st.button(size, key=f"{name}_{size}", help="Select this size"):
                         st.session_state[session_key] = size
                         st.session_state.warnings[name] = ""
                         st.rerun()
@@ -226,12 +228,17 @@ for name, variants in grouped.items():
         if os.path.exists(image_path):
             st.image(image_path, width=120, use_container_width=True)
         else:
-            st.markdown("🖼 No image")
+            st.image("data/images/placeholder.jpg", width=120, use_container_width=True)
 
     with col2:
         st.markdown('<div class="product-info">', unsafe_allow_html=True)
         st.markdown(f"**Price:** {variants[0]['price']} EGP")
-        st.markdown(f"**Stock:** {sum(v['quantity'] for v in variants)}")
+        selected_size = st.session_state.get(f"selected_size_{name}")
+        if selected_size:
+            stock = next(v["quantity"] for v in variants if v["size"] == selected_size)
+        else:
+            stock = sum(v["quantity"] for v in variants)
+        st.markdown(f"**Stock:** {stock}")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
