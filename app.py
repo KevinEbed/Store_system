@@ -25,6 +25,7 @@ st.markdown(
         padding: 8px 16px;
         border-radius: 4px;
         cursor: pointer;
+        transition: background-color 0.3s;
     }
     .stButton>button:hover {
         background-color: #0056b3;
@@ -35,6 +36,64 @@ st.markdown(
         border-radius: 8px;
         padding: 10px;
         margin-bottom: 10px;
+    }
+    .warning-box {
+        background-color: #ff4444;
+        color: white;
+        padding: 10px;
+        border-radius: 4px;
+        margin-top: 10px;
+        display: inline-block;
+    }
+    .size-button {
+        background-color: #2a2a2a;
+        color: #cccccc;
+        border: 2px solid #444;
+        border-radius: 5px;
+        padding: 8px 12px;
+        text-align: center;
+        font-weight: bold;
+        margin: 2px;
+        display: inline-block;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .size-button:hover, .size-button.selected {
+        border-color: #00cc00;
+        background-color: #00cc00;
+        color: #ffffff;
+    }
+    .size-button.out-of-stock {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .qty-button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 8px;
+        text-align: center;
+        font-size: 18px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+        display: inline-block;
+        margin: 0;
+        overflow: hidden;
+    }
+    .qty-button:hover {
+        background-color: #0056b3;
+    }
+    .qty-display {
+        background-color: #2a2a2a;
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+        padding: 8px;
+        text-align: center;
+        font-size: 18px;
+        display: inline-block;
+        margin: 0 2px;
     }
     </style>
     """,
@@ -48,6 +107,10 @@ if "cart" not in st.session_state:
     st.session_state.cart = {}  # Store by product_id: {id: {id, name, size, price, quantity}}
 if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
+if "warnings" not in st.session_state:
+    st.session_state.warnings = {}
+if "quantities" not in st.session_state:
+    st.session_state.quantities = {}
 
 def reload_products():
     try:
@@ -64,113 +127,93 @@ grouped = {}
 for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
-# ------------------ Helper: Render Size Buttons ------------------ #
-def render_size_buttons(name, all_sizes, available_sizes):
-    st.markdown("**Size**", unsafe_allow_html=True)
-    cols = st.columns(len(all_sizes))
+# ------------------ Helper: Render Size Buttons and Quantities ------------------ #
+def render_size_quantities(name, variants):
+    st.markdown("**Size & Quantity**", unsafe_allow_html=True)
+    available_variants = [v for v in variants if v["quantity"] > 0]
+    all_sizes = sorted(set(v["size"] for v in variants))
+    available_sizes = sorted(set(v["size"] for v in available_variants))
     session_key = f"selected_size_{name}"
+    qty_key_base = f"qty_{name}"
 
-    # Initialize or reset selected size to an available one
+    # Initialize or reset selected size and quantities
     if session_key not in st.session_state or st.session_state.get(session_key) not in available_sizes:
         st.session_state[session_key] = available_sizes[0] if available_sizes else None
+        st.session_state.quantities = {size: 1 for size in all_sizes}  # Default to 1 for all sizes
+        st.session_state.quantities["M"] = 3  # Set M to 3 as per initial image
+        st.session_state.warnings[name] = ""
 
+    cols = st.columns(len(all_sizes))
     for i, size in enumerate(all_sizes):
         selected = st.session_state.get(session_key) == size
         in_stock = size in available_sizes
-
-        bg = "#00cc00" if selected and in_stock else "#2a2a2a"
-        color = "#ffffff" if selected else "#cccccc"
-        border = "#00cc00" if selected else "#444"
-        opacity = "0.5" if not in_stock else "1"
-        cursor = "not-allowed" if not in_stock else "pointer"
-        content = "X" if not in_stock else size
+        button_class = "size-button" + (" selected" if selected and in_stock else "") + (" out-of-stock" if not in_stock else "")
 
         html = f"""
-        <div style="
-            background-color: {bg};
-            color: {color};
-            border: 2px solid {border};
-            border-radius: 5px;
-            padding: 8px 12px;
-            text-align: center;
-            font-weight: bold;
-            opacity: {opacity};
-            cursor: {cursor};
-            display: inline-block;
-            margin: 2px;
-        ">
-            {content}
+        <div class="{button_class}" style="display: inline-block; margin: 2px;">
+            {size if in_stock else 'X'}
         </div>
         """
-        if in_stock:
-            if cols[i].button(size, key=f"{name}_{size}", help="Select size"):
-                st.session_state[session_key] = size
-        else:
-            cols[i].markdown(html, unsafe_allow_html=True)
+        with cols[i]:
+            if in_stock:
+                if st.button(size, key=f"{name}_{size}", help="Select size"):
+                    st.session_state[session_key] = size
+                    st.session_state.warnings[name] = ""
+            else:
+                st.markdown(html, unsafe_allow_html=True)
+
+            if in_stock:
+                qty_key = f"{qty_key_base}_{size}"
+                if qty_key not in st.session_state.quantities:
+                    st.session_state.quantities[qty_key] = st.session_state.quantities.get(size, 1)
+                col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
+                with col_q1:
+                    if st.button("-", key=f"dec_{qty_key}"):
+                        st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
+                        st.experimental_rerun()
+                with col_q2:
+                    st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
+                with col_q3:
+                    variant = next(v for v in variants if v["size"] == size)
+                    if st.button("+", key=f"inc_{qty_key}"):
+                        st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+                        st.experimental_rerun()
 
 # ------------------ Product Display ------------------ #
 st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
     available_variants = [v for v in variants if v["quantity"] > 0]
     if not available_variants:
-        st.markdown(f"<div class='product-card'><h3>{name}</h3><p style='color: #ff4444;'>Out of stock for all sizes.</p></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='product-card'><h3>{name}</h3><p>Out of stock for all sizes.</p></div>", unsafe_allow_html=True)
         continue
-
-    all_sizes = sorted(set(v["size"] for v in variants))
-    available_sizes = sorted(set(v["size"] for v in available_variants))
-    selected_size = st.session_state.get(f"selected_size_{name}")
-    selected_variant = next((v for v in available_variants if v["size"] == selected_size), None) if selected_size else available_variants[0]
 
     st.markdown(f"<div class='product-card'><h3>{name}</h3>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
-        image_path = f"data/images/{selected_variant['id']}.jpg"
+        image_path = f"data/images/{name.replace(' ', '_').lower()}.jpg"
+        if not os.path.exists(image_path):
+            image_path = "data/images/placeholder.jpg"
         if os.path.exists(image_path):
-            st.image(image_path, width=120, use_column_width=True)
+            st.image(image_path, width=120, use_container_width=True)
         else:
-            placeholder = "data/images/placeholder.jpg"
-            if os.path.exists(placeholder):
-                st.image(placeholder, width=120, caption="No image", use_column_width=True)
-            else:
-                st.markdown("🖼 No image")
+            st.markdown("🖼 No image")
 
     with col2:
-        st.markdown(f"**Price:** {selected_variant['price']} EGP")
-        st.markdown(f"**Stock:** {selected_variant['quantity']}")
+        variant = available_variants[0]  # Use first variant for price and stock as an example
+        st.markdown(f"**Price:** {variant['price']} EGP")
+        st.markdown(f"**Stock:** {variant['quantity']}")
 
     with col3:
-        render_size_buttons(name, all_sizes, available_sizes)
-        qty_key = f"qty_{selected_variant['id']}"
-        if qty_key not in st.session_state:
-            st.session_state[qty_key] = 1
-
-        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
-        with col_q1:
-            st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding:8px; background-color:#007bff; color:white; border-radius:5px;'>-</div>",
-                unsafe_allow_html=True
-            )
-            if st.button("-", key=f"dec_{selected_variant['id']}", help="Decrease quantity"):
-                st.session_state[qty_key] = max(1, st.session_state[qty_key] - 1)
-        with col_q2:
-            st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding:8px;'>{st.session_state[qty_key]}</div>",
-                unsafe_allow_html=True
-            )
-        with col_q3:
-            st.markdown(
-                f"<div style='text-align:center; font-size:18px; padding:8px; background-color:#007bff; color:white; border-radius:5px;'>+</div>",
-                unsafe_allow_html=True
-            )
-            if st.button("+", key=f"inc_{selected_variant['id']}", help="Increase quantity"):
-                st.session_state[qty_key] = min(selected_variant["quantity"], st.session_state[qty_key] + 1)
-
+        render_size_quantities(name, variants)
+        selected_size = st.session_state.get(f"selected_size_{name}")
+        selected_variant = next((v for v in available_variants if v["size"] == selected_size), available_variants[0])
+        qty_key = f"qty_{name}_{selected_size}"
         if st.button("➕ Add to Cart", key=f"add_{selected_variant['id']}"):
-            qty = st.session_state[qty_key]
+            qty = st.session_state.quantities.get(qty_key, 1)
             in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
             available_stock = selected_variant["quantity"] - in_cart_qty
             if qty > available_stock:
-                st.warning(f"Only {available_stock} left in stock")
+                st.session_state.warnings[name] = f"Only {available_stock} left in stock"
             else:
                 item = {
                     "id": selected_variant["id"],
@@ -183,8 +226,12 @@ for name, variants in grouped.items():
                     st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                 else:
                     st.session_state.cart[selected_variant["id"]] = item
-                st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})")
+                st.session_state.warnings[name] = f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})"
 
+    if st.session_state.warnings.get(name):
+        st.markdown(f"<div class='warning-box'>{st.session_state.warnings[name]}</div>", unsafe_allow_html=True)
+        if st.button("✖ Clear Warning", key=f"clear_warning_{name}"):
+            st.session_state.warnings[name] = ""
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------ Cart Display ------------------ #
@@ -215,8 +262,7 @@ if st.session_state.cart:
                     current_ids = {row[0] for row in cursor.fetchall()}
                     missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
                     if missing:
-                        st.error(f"❌ Product ID(s) missing: {missing}")
-                        st.session_state.checkout_in_progress = False
+                        st.session_state.warnings["checkout"] = f"❌ Product ID(s) missing: {missing}"
                     else:
                         success = False
                         attempt = 0
@@ -233,7 +279,7 @@ if st.session_state.cart:
                                 if "locked" in str(e).lower() and attempt < max_attempts:
                                     time.sleep(1.0 * attempt)
                                 else:
-                                    st.error(f"❌ Checkout failed: {e}")
+                                    st.session_state.warnings["checkout"] = f"❌ Checkout failed: {e}"
                                     break
                         if success:
                             st.success("✅ Order complete. Receipt saved.")
@@ -242,12 +288,18 @@ if st.session_state.cart:
                             st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                             st.session_state.cart = {}
                             st.session_state.checkout_in_progress = False
-                            st.rerun()
+                            st.session_state.warnings["checkout"] = ""
+                            st.experimental_rerun()
                         else:
                             st.session_state.checkout_in_progress = False
             except Exception as outer_e:
-                st.error(f"Unexpected error during checkout: {outer_e}")
+                st.session_state.warnings["checkout"] = f"Unexpected error during checkout: {outer_e}"
                 st.session_state.checkout_in_progress = False
     st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'><p>🛒 Cart is empty.</p></div>", unsafe_allow_html=True)
+
+if st.session_state.warnings.get("checkout"):
+    st.markdown(f"<div class='warning-box'>{st.session_state.warnings['checkout']}</div>", unsafe_allow_html=True)
+    if st.button("✖ Clear Checkout Warning", key="clear_checkout_warning"):
+        st.session_state.warnings["checkout"] = ""
