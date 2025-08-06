@@ -41,12 +41,12 @@ order_items_df = pd.read_sql_query("SELECT * FROM order_items ORDER BY order_id 
 products_df = pd.read_sql_query("SELECT * FROM products ORDER BY id", conn)
 conn.close()
 
-# Normalize
+# Normalize and compute line totals
 order_items_df["price"] = pd.to_numeric(order_items_df["price"], errors="coerce").fillna(0.0)
 order_items_df["quantity"] = pd.to_numeric(order_items_df["quantity"], errors="coerce").fillna(0).astype(int)
 order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantity"]
 
-# Recalc totals
+# Recalculate order totals from items when needed
 recalc = (
     order_items_df.groupby("order_id", as_index=False)["line_total"]
     .sum()
@@ -61,15 +61,10 @@ orders_df["total"] = orders_df["total_from_items"].where(
 orders_df.drop(columns=["total_from_items"], inplace=True)
 
 # Parse timestamp
-def parse_ts(df, col="timestamp"):
-    parsed = pd.to_datetime(df[col], errors="coerce")
-    df["parsed_ts"] = parsed
-    df["date"] = df["parsed_ts"].dt.date
-    return df
+orders_df["parsed_ts"] = pd.to_datetime(orders_df.get("timestamp", ""), errors="coerce")
+orders_df["date"] = orders_df["parsed_ts"].dt.date
 
-orders_df = parse_ts(orders_df)
-
-# Daily aggregation
+# Daily totals
 daily_totals_df = (
     orders_df.dropna(subset=["date"])
     .groupby("date", as_index=False)["total"]
@@ -93,12 +88,14 @@ st.subheader("Inspect Order")
 if not orders_df.empty:
     selected = st.selectbox("Order ID", orders_df["id"].tolist())
     order_row = orders_df[orders_df["id"] == selected].iloc[0]
-    st.markdown(f"**Order {selected}** - Total: {order_row['total']} EGP - {order_row.get('timestamp','')}")
+    st.markdown(f"**Order {selected}** — Total: {order_row['total']:.2f} EGP — {order_row.get('timestamp','')}")
     items_df = order_items_df[order_items_df["order_id"] == selected].copy()
     if not items_df.empty:
         items_df["line_total"] = items_df["price"] * items_df["quantity"]
-        st.dataframe(items_df[["product_id", "name", "size", "price", "quantity", "line_total"]], use_container_width=True)
-
+        st.dataframe(
+            items_df[["product_id", "name", "size", "price", "quantity", "line_total"]],
+            use_container_width=True
+        )
         if st.button("Load into Cart"):
             if "cart" not in st.session_state:
                 st.session_state.cart = {}
@@ -114,9 +111,9 @@ if not orders_df.empty:
             st.session_state.cart = new_cart
             st.success("Loaded order into cart. Go to POS page to checkout.")
     else:
-        st.warning("No items found for this order.")
+        st.warning("No items for this order.")
 
-# Export combined
+# Full export
 st.markdown("---")
 st.subheader("Full Export")
 combined = {
