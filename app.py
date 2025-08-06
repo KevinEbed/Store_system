@@ -289,29 +289,36 @@ if st.session_state.cart:
     cart_items = list(st.session_state.cart.values())
     cart_df = pd.DataFrame(cart_items)
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
-    
-    # Add delete button column
-    cart_df["Action"] = [f"🗑️" for _ in range(len(cart_df))]
-    
-    st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'>", unsafe_allow_html=True)
-    # Display DataFrame with custom rendering for the delete button
-    st.dataframe(
-        cart_df[["name", "size", "price", "quantity", "total", "Action"]],
-        use_container_width=True,
-        hide_index=True,
-        on_select="ignore"  # Prevent default selection behavior
-    )
-    
-    # Handle delete button clicks
-    for index, row in cart_df.iterrows():
-        if st.button("🗑️", key=f"delete_{row['id']}"):
-            del st.session_state.cart[row["id"]]
-            st.success(f"Removed {row['quantity']} x {row['name']}{f' (Size: {row['size']})' if row['size'] else ''} from cart")
-            st.rerun()
 
+    st.markdown("### 🧾 Cart Items")
+
+    # Table Header
+    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 2, 1])
+    with col1: st.markdown("**Name**")
+    with col2: st.markdown("**Size**")
+    with col3: st.markdown("**Price**")
+    with col4: st.markdown("**Quantity**")
+    with col5: st.markdown("**Total**")
+    with col6: st.markdown("**🗑️**")
+
+    for index, row in cart_df.iterrows():
+        col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 2, 2, 2, 1])
+        with col1: st.markdown(row["name"])
+        with col2: st.markdown(row["size"])
+        with col3: st.markdown(f"{row['price']} EGP")
+        with col4: st.markdown(str(row["quantity"]))
+        with col5: st.markdown(f"{row['total']} EGP")
+        with col6:
+            if st.button("🗑️", key=f"delete_{row['id']}"):
+                del st.session_state.cart[row["id"]]
+                st.success(f"Removed {row['quantity']} x {row['name']}{f' (Size: {row['size']})' if row['size'] else ''} from cart")
+                st.rerun()
+
+    # Show total
     total = cart_df["total"].sum()
     st.markdown(f"<h3 style='color: #00cc00;'>Total: {total} EGP</h3>", unsafe_allow_html=True)
-    
+
+    # Buttons: Clear + Checkout
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1])
     with col_c1:
         if st.button("🗑️ Clear Cart"):
@@ -362,10 +369,10 @@ if st.session_state.cart:
             except Exception as outer_e:
                 st.session_state.warnings["checkout"] = f"Unexpected error during checkout: {outer_e}"
                 st.session_state.checkout_in_progress = False
-    st.markdown("</div>", unsafe_allow_html=True)
 else:
     st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'><p>🛒 Cart is empty.</p></div>", unsafe_allow_html=True)
 
+# Show checkout warning
 if st.session_state.warnings.get("checkout"):
     st.markdown(f"<div class='warning-box'>{st.session_state.warnings['checkout']}</div>", unsafe_allow_html=True)
     if st.button("✖ Clear Checkout Warning", key="clear_checkout_warning"):
