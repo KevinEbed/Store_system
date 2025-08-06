@@ -4,7 +4,6 @@ import io
 from database import get_connection, init_db
 
 st.set_page_config(page_title="Admin Dashboard", layout="wide")
-
 init_db()
 
 def upload_inventory():
@@ -25,7 +24,7 @@ def upload_inventory():
         if st.button("Upload to Database"):
             c = conn.cursor()
             if existing_count > 0 and not overwrite:
-                st.warning("Products already exist; enable overwrite to replace.")
+                st.warning("Products exist; enable overwrite to replace.")
             else:
                 if overwrite:
                     c.execute("DELETE FROM products")
@@ -40,8 +39,12 @@ def upload_inventory():
                             price=excluded.price,
                             quantity=excluded.quantity
                     """, (
-                        int(row["id"]), row["name"], row.get("category", ""), row.get("size", ""),
-                        int(row["price"]), int(row["quantity"])
+                        int(row["id"]),
+                        row["name"],
+                        row.get("category", ""),
+                        row.get("size", ""),
+                        int(row["price"]),
+                        int(row["quantity"])
                     ))
                 conn.commit()
                 st.success("Inventory uploaded.")
