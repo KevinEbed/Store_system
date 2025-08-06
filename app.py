@@ -19,16 +19,11 @@ st.markdown(
         color: #ffffff;
     }
     .stButton>button {
-        background-color: #007bff;
-        color: white;
         border: none;
         padding: 8px 16px;
         border-radius: 4px;
         cursor: pointer;
         transition: background-color 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #0056b3;
     }
     .product-card {
         background-color: #2a2a2a;
@@ -68,32 +63,61 @@ st.markdown(
         cursor: not-allowed;
     }
     .qty-button {
-        background-color: #007bff;
+        background-color: #000000;
         color: white;
         border: none;
         border-radius: 5px;
-        padding: 8px;
+        padding: 8px 12px;
         text-align: center;
-        font-size: 18px;
+        font-size: 16px;
         cursor: pointer;
         transition: background-color 0.3s;
         display: inline-block;
-        margin: 0;
-        overflow: hidden;
+        margin: 0 2px;
     }
     .qty-button:hover {
-        background-color: #0056b3;
+        background-color: #333333;
     }
     .qty-display {
         background-color: #2a2a2a;
         color: #ffffff;
         border: none;
         border-radius: 5px;
-        padding: 8px;
+        padding: 8px 12px;
         text-align: center;
-        font-size: 18px;
+        font-size: 16px;
         display: inline-block;
         margin: 0 2px;
+    }
+    .add-to-cart-btn {
+        background-color: #000000;
+        color: white;
+        border: 2px solid white;
+        border-radius: 5px;
+        padding: 10px 20px;
+        text-align: center;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: block;
+        width: 100%;
+        margin-top: 10px;
+    }
+    .add-to-cart-btn:hover {
+        background-color: #333333;
+    }
+    .size-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 10px;
+    }
+    .qty-container {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 10px;
     }
     </style>
     """,
@@ -104,7 +128,7 @@ st.title("🛍️ Clothing Store – Point of Sale")
 # ------------------ Init ------------------ #
 init_db()
 if "cart" not in st.session_state:
-    st.session_state.cart = {}  # Store by product_id: {id: {id, name, size, price, quantity}}
+    st.session_state.cart = {}  # Store by product_id: {id, name, size, price, quantity}
 if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 if "warnings" not in st.session_state:
@@ -134,50 +158,47 @@ def render_size_quantities(name, variants):
     all_sizes = sorted(set(v["size"] for v in variants))
     available_sizes = sorted(set(v["size"] for v in available_variants))
     session_key = f"selected_size_{name}"
-    qty_key_base = f"qty_{name}"
 
     # Initialize or reset selected size and quantities
     if session_key not in st.session_state or st.session_state.get(session_key) not in available_sizes:
         st.session_state[session_key] = available_sizes[0] if available_sizes else None
         st.session_state.quantities = {size: 1 for size in all_sizes}  # Default to 1 for all sizes
-        st.session_state.quantities["M"] = 3  # Set M to 3 as per initial image
         st.session_state.warnings[name] = ""
 
-    cols = st.columns(len(all_sizes))
-    for i, size in enumerate(all_sizes):
+    # Size buttons
+    st.markdown('<div class="size-container">', unsafe_allow_html=True)
+    for size in all_sizes:
         selected = st.session_state.get(session_key) == size
         in_stock = size in available_sizes
         button_class = "size-button" + (" selected" if selected and in_stock else "") + (" out-of-stock" if not in_stock else "")
+        
+        if in_stock:
+            if st.button(size, key=f"{name}_{size}", help="Select size"):
+                st.session_state[session_key] = size
+                st.session_state.warnings[name] = ""
+        else:
+            st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        html = f"""
-        <div class="{button_class}" style="display: inline-block; margin: 2px;">
-            {size if in_stock else 'X'}
-        </div>
-        """
-        with cols[i]:
-            if in_stock:
-                if st.button(size, key=f"{name}_{size}", help="Select size"):
-                    st.session_state[session_key] = size
-                    st.session_state.warnings[name] = ""
-            else:
-                st.markdown(html, unsafe_allow_html=True)
-
-            if in_stock:
-                qty_key = f"{qty_key_base}_{size}"
-                if qty_key not in st.session_state.quantities:
-                    st.session_state.quantities[qty_key] = st.session_state.quantities.get(size, 1)
-                col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
-                with col_q1:
-                    if st.button("-", key=f"dec_{qty_key}"):
-                        st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-                        st.experimental_rerun()
-                with col_q2:
-                    st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
-                with col_q3:
-                    variant = next(v for v in variants if v["size"] == size)
-                    if st.button("+", key=f"inc_{qty_key}"):
-                        st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-                        st.experimental_rerun()
+    # Quantity selector for selected size
+    selected_size = st.session_state.get(session_key)
+    if selected_size and selected_size in available_sizes:
+        variant = next(v for v in variants if v["size"] == selected_size)
+        qty_key = f"qty_{name}_{selected_size}"
+        if qty_key not in st.session_state.quantities:
+            st.session_state.quantities[qty_key] = 1
+            
+        st.markdown('<div class="qty-container">', unsafe_allow_html=True)
+        if st.button("-", key=f"dec_{qty_key}"):
+            st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
+            st.experimental_rerun()
+        
+        st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
+        
+        if st.button("+", key=f"inc_{qty_key}"):
+            st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
+            st.experimental_rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ------------------ Product Display ------------------ #
 st.markdown("## 🛍️ Products")
@@ -208,7 +229,7 @@ for name, variants in grouped.items():
         selected_size = st.session_state.get(f"selected_size_{name}")
         selected_variant = next((v for v in available_variants if v["size"] == selected_size), available_variants[0])
         qty_key = f"qty_{name}_{selected_size}"
-        if st.button("➕ Add to Cart", key=f"add_{selected_variant['id']}"):
+        if st.button("Add to Cart", key=f"add_{selected_variant['id']}"):
             qty = st.session_state.quantities.get(qty_key, 1)
             in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
             available_stock = selected_variant["quantity"] - in_cart_qty
