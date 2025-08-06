@@ -17,7 +17,8 @@ if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 
 def reload_products():
-    return get_products()
+    with get_connection() as conn:
+        return get_products(conn)  # Ensure get_products uses the connection
 
 products = reload_products()
 
@@ -150,53 +151,54 @@ if st.session_state.cart:
     elif st.button("💳 Checkout"):
         st.session_state.checkout_in_progress = True
         cart_items = []
-        for name, item in st.session_state.cart.items():
-            total_qty = sum(item["sizes"].values())
-            # Convert cart item to a list of individual items for save_order
-            for size, qty in item["sizes"].items():
-                for _ in range(qty):
-                    # Find a variant with matching size and name to get id
-                    variant = next((v for v in products if v["name"] == name and v.get("size") == size), None)
-                    if variant:
-                        cart_items.append({
-                            "id": variant["id"],
-                            "name": name,
-                            "size": size,
-                            "price": item["price"],
-                            "quantity": 1
-                        })
-        current_ids = {p["id"] for p in reload_products()}
-        missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
+        with get_connection() as conn:  # Use context manager for checkout
+            for name, item in st.session_state.cart.items():
+                total_qty = sum(item["sizes"].values())
+                # Convert cart item to a list of individual items for save_order
+                for size, qty in item["sizes"].items():
+                    for _ in range(qty):
+                        # Find a variant with matching size and name to get id
+                        variant = next((v for v in products if v["name"] == name and v.get("size") == size), None)
+                        if variant:
+                            cart_items.append({
+                                "id": variant["id"],
+                                "name": name,
+                                "size": size,
+                                "price": item["price"],
+                                "quantity": 1
+                            })
+            current_ids = {p["id"] for p in get_products(conn)}  # Reload products within the same connection
+            missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
 
-        if missing:
-            st.error(f"❌ Product ID(s) missing: {missing}")
-            st.session_state.checkout_in_progress = False
-        else:
-            success = False
-            attempt = 0
-            max_attempts = 3
-            while attempt < max_attempts and not success:
-                attempt += 1
-                try:
-                    order_id = save_order(cart_items, total)
-                    success = True
-                except Exception as e:
-                    err_str = str(e).lower()
-                    if "locked" in err_str and attempt < max_attempts:
-                        time.sleep(0.5 * attempt)
-                    else:
-                        st.error(f"❌ Checkout failed: {e}")
-                        break
-
-            if success:
-                st.success("✅ Order complete. Receipt saved.")
-                st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
-                st.markdown(f"- 💰 **Total:** `{total} EGP`")
-                st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-                st.session_state.cart = {}
+            if missing:
+                st.error(f"❌ Product ID(s) missing: {missing}")
                 st.session_state.checkout_in_progress = False
-                st.rerun()
             else:
-                st.session_state.checkout_in_progress = False
+                success = False
+                attempt = 0
+                max_attempts = 3
+                while attempt < max_attempts and not success:
+                    attempt += 1
+                    try:
+                        order_id = save_order(cart_items, total, conn)  # Pass connection to save_order
+                        success = True
+                    except Exception as e:
+                        err_str = str(e).lower()
+                        if "locked" in err_str and attempt < max_attempts:
+                            time.sleep(0.5 * attempt)  # Increase delay with each attempt
+                        else:
+                            st.error(f"❌ Checkout failed: {e}")
+                            break
+
+                if success:
+                    st.success("✅ Order complete. Receipt saved.")
+                    st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+                    st.markdown(f"- 💰 **Total:** `{total} EGP`")
+                    st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+                    st.session_state.cart = {}
+                    st.session_state.checkout_in_progress = False
+                    st.rerun()
+                else:
+                    st.session_state.checkout_in_progress = False
 else:
     st.info("🛒 Cart is empty.")
