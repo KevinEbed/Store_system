@@ -33,17 +33,17 @@ for p in products:
 # ------------------ Helper: Render Size Buttons ------------------ #
 def render_size_buttons(name, available_sizes):
     st.markdown("**SIZE**")
-    sizes = ["XS", "S", "M", "L", "XL", "XXL"]
-    col_btns = st.columns(len(sizes))
+    if not available_sizes:
+        st.warning(f"No available sizes for {name}")
+        return
+    col_btns = st.columns(len(available_sizes))
     session_key = f"selected_size_{name}"
 
-    if session_key not in st.session_state:
-        for s in sizes:
-            if s in available_sizes:
-                st.session_state[session_key] = s
-                break
+    # Initialize or reset selected size to an available one
+    if session_key not in st.session_state or st.session_state.get(session_key) not in available_sizes:
+        st.session_state[session_key] = available_sizes[0]  # Default to first available size
 
-    for i, s in enumerate(sizes):
+    for i, s in enumerate(available_sizes):
         selected = st.session_state.get(session_key) == s
         in_stock = s in available_sizes
 
@@ -85,14 +85,15 @@ for name, variants in grouped.items():
         st.warning("🚫 Out of stock for all sizes.")
         continue
 
-    available_sizes = [v["size"] for v in available_variants]
+    available_sizes = sorted(set(v["size"] for v in available_variants))  # Unique sorted sizes
     render_size_buttons(name, available_sizes)
 
     selected_size = st.session_state.get(f"selected_size_{name}")
     selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
     if not selected_variant:
-        st.warning("❌ Selected size is currently unavailable.")
-        continue
+        st.warning(f"❌ Selected size ({selected_size}) is currently unavailable for {name}. Resetting to an available size.")
+        st.session_state[f"selected_size_{name}"] = available_sizes[0]  # Reset to first available size
+        selected_variant = next((v for v in available_variants if v["size"] == available_sizes[0]), None)
 
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
