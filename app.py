@@ -8,7 +8,7 @@ from database import init_db, get_products, save_order
 st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
 
-# Initialize DB / cart
+# ------------------ Init ------------------ #
 init_db()
 if "cart" not in st.session_state:
     st.session_state.cart = {}
@@ -20,63 +20,82 @@ def reload_products():
 
 products = reload_products()
 
-# Group variants by product name
+# ------------------ Group by Product Name ------------------ #
 grouped = {}
 for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
+# ------------------ Product Display ------------------ #
 st.markdown("## 🛍️ Products")
-
 for name, variants in grouped.items():
     st.markdown(f"### {name}")
-    for variant in variants:
-        col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1])
-        with col1:
-            image_path = f"data/images/{variant['id']}.jpg"
-            if os.path.exists(image_path):
-                st.image(image_path, width=100)
-            else:
-                placeholder = "data/images/placeholder.jpg"
-                if os.path.exists(placeholder):
-                    st.image(placeholder, width=100)
-                else:
-                    st.markdown("🖼 No image")
-        with col2:
-            st.markdown(f"**Size:** {variant['size']}")
-            st.markdown(f"Price: {variant['price']} EGP")
-            in_cart_qty = st.session_state.cart.get(variant["id"], {}).get("quantity", 0)
-            available_stock = max(variant["quantity"] - in_cart_qty, 0)
-            st.markdown(f"Stock: {available_stock}")
-        with col3:
-            qty = st.number_input(
-                "Qty",
-                min_value=1,
-                max_value=available_stock if available_stock > 0 else 1,
-                step=1,
-                key=f"qty_{variant['id']}"
-            )
-        with col4:
-            if available_stock == 0:
-                st.warning("Out of stock")
-            elif st.button("➕ Add to Cart", key=f"add_{variant['id']}"):
-                if qty <= available_stock:
-                    entry = {
-                        "id": variant["id"],
-                        "name": variant["name"],
-                        "size": variant["size"],
-                        "price": variant["price"],
-                        "quantity": qty
-                    }
-                    if variant["id"] in st.session_state.cart:
-                        st.session_state.cart[variant["id"]]["quantity"] += qty
-                    else:
-                        st.session_state.cart[variant["id"]] = entry
-                    st.success(f"Added {qty} x {variant['name']} ({variant['size']})")
-                else:
-                    st.warning(f"Only {available_stock} left in stock")
+    
+    available_sizes = [v for v in variants if v["quantity"] > 0]
+    if not available_sizes:
+        st.warning("🚫 Out of stock for all sizes.")
+        continue
 
+    size_options = [f"{v['size']} (Stock: {v['quantity']})" for v in available_sizes]
+    size_mapping = {f"{v['size']} (Stock: {v['quantity']})": v for v in available_sizes}
+    
+    selected_size_display = st.selectbox(f"Select size for {name}", size_options, key=f"size_{name}")
+    selected_variant = size_mapping[selected_size_display]
+    
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        image_path = f"data/images/{selected_variant['id']}.jpg"
+        if os.path.exists(image_path):
+            st.image(image_path, width=120)
+        else:
+            placeholder = "data/images/placeholder.jpg"
+            if os.path.exists(placeholder):
+                st.image(placeholder, width=120, caption="No image")
+            else:
+                st.markdown("🖼 No image")
+
+    with col2:
+        st.markdown(f"**Price:** {selected_variant['price']} EGP")
+        st.markdown(f"**Stock Available:** {selected_variant['quantity']}")
+    
+    with col3:
+        qty_key = f"qty_{selected_variant['id']}"
+        if qty_key not in st.session_state:
+            st.session_state[qty_key] = 1
+
+        col_a, col_b, col_c = st.columns([1, 1, 1])
+        with col_a:
+            if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
+                st.session_state[qty_key] -= 1
+        with col_b:
+            st.markdown(f"<div style='text-align:center'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
+        with col_c:
+            if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
+                st.session_state[qty_key] += 1
+
+        if st.button("➕ Add to Cart", key=f"add_{selected_variant['id']}"):
+            qty = st.session_state[qty_key]
+            in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
+            available_stock = selected_variant["quantity"] - in_cart_qty
+            if qty > available_stock:
+                st.warning(f"Only {available_stock} left in stock")
+            else:
+                item = {
+                    "id": selected_variant["id"],
+                    "name": selected_variant["name"],
+                    "size": selected_variant["size"],
+                    "price": selected_variant["price"],
+                    "quantity": qty
+                }
+                if selected_variant["id"] in st.session_state.cart:
+                    st.session_state.cart[selected_variant["id"]]["quantity"] += qty
+                else:
+                    st.session_state.cart[selected_variant["id"]] = item
+                st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant['size']})")
+
+# ------------------ Cart Display ------------------ #
 st.markdown("---")
 st.markdown("## 🛒 Cart")
+
 if st.session_state.cart:
     cart_items = list(st.session_state.cart.values())
     cart_df = pd.DataFrame(cart_items)
@@ -88,17 +107,17 @@ if st.session_state.cart:
 
     if st.button("🗑️ Clear Cart"):
         st.session_state.cart = {}
-        st.success("Cart cleared")
+        st.success("🧹 Cart cleared.")
 
     if st.session_state.checkout_in_progress:
         st.info("Processing checkout...")
     elif st.button("💳 Checkout"):
         st.session_state.checkout_in_progress = True
-        # Validate existence
         current_ids = {p["id"] for p in reload_products()}
         missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
+
         if missing:
-            st.error(f"Missing product IDs: {missing}")
+            st.error(f"❌ Product ID(s) missing: {missing}")
             st.session_state.checkout_in_progress = False
         else:
             success = False
@@ -113,17 +132,18 @@ if st.session_state.cart:
                     if "locked" in str(e).lower() and attempt < max_attempts:
                         time.sleep(0.5 * attempt)
                     else:
-                        st.error(f"Checkout failed: {e}")
+                        st.error(f"❌ Checkout failed: {e}")
                         break
+
             if success:
-                st.success("Order complete. Receipt saved.")
-                st.markdown(f"- **Order ID:** {order_id}")
-                st.markdown(f"- **Total:** {total} EGP")
-                st.markdown(f"- **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                st.success("✅ Order complete. Receipt saved.")
+                st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+                st.markdown(f"- 💰 **Total:** `{total} EGP`")
+                st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                 st.session_state.cart = {}
                 st.session_state.checkout_in_progress = False
                 st.experimental_rerun()
             else:
                 st.session_state.checkout_in_progress = False
 else:
-    st.info("Cart is empty.")
+    st.info("🛒 Cart is empty.")
