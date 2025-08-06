@@ -181,7 +181,7 @@ def render_size_quantities(name, variants):
             if st.button(size, key=f"{name}_{size}"):
                 st.session_state[session_key] = size
                 st.session_state.warnings[name] = ""
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
