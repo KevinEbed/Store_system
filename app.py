@@ -106,6 +106,21 @@ st.markdown(
     .product-title {
         margin-bottom: 5px;
     }
+    .stSelectbox {
+        width: 100px !important; /* Adjust width to make it smaller */
+        border-radius: 10px !important;
+        background-color: #333 !important;
+        color: #fff !important;
+        border: 2px solid #444 !important;
+    }
+    .stSelectbox > div > div {
+        background-color: #333 !important;
+        color: #fff !important;
+    }
+    .stSelectbox label {
+        color: #fff !important;
+        font-size: 14px !important;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -140,6 +155,7 @@ for p in products:
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
 # Inside render_size_quantities function (for items with sizes)
+# Inside render_size_quantities function
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -154,25 +170,11 @@ def render_size_quantities(name, variants):
         if session_key not in st.session_state or st.session_state[session_key] not in available_sizes:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-        # Size buttons
-        cols = st.columns(len(all_sizes))
-        for i, size in enumerate(all_sizes):
-            selected = st.session_state.get(session_key) == size
-            in_stock = size in available_sizes
-            button_class = "size-button" + (" selected" if selected else "") + (" out-of-stock" if not in_stock else "")
-            
-            with cols[i]:
-                if in_stock:
-                    st.markdown(f'<div class="{button_class}">{size}</div>', unsafe_allow_html=True)
-                    if st.button(size, key=f"{name}_{size}", help="Select this size"):
-                        st.session_state[session_key] = size
-                        st.session_state.warnings[name] = ""
-                        st.rerun()
-                else:
-                    st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
+        # Size dropdown
+        selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
+        st.session_state[session_key] = selected_size
 
         # Quantity dropdown for selected size
-        selected_size = st.session_state.get(session_key)
         if selected_size and selected_size in available_sizes:
             variant = next(v for v in variants if v["size"] == selected_size)
             qty_key = f"qty_{name}_{selected_size}"
