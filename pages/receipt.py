@@ -101,13 +101,11 @@ if not orders_df.empty:
                 st.session_state.cart = {}
             new_cart = {}
             for _, r in items_df.iterrows():
-                new_cart[int(r["product_id"])] = {
-                    "id": int(r["product_id"]),
-                    "name": r["name"],
-                    "size": r.get("size", ""),
-                    "price": r["price"],
-                    "quantity": int(r["quantity"]),
-                }
+                name = r["name"]
+                size = r.get("size", "")
+                if name not in new_cart:
+                    new_cart[name] = {"sizes": {}, "price": r["price"]}
+                new_cart[name]["sizes"][size] = new_cart[name]["sizes"].get(size, 0) + int(r["quantity"])
             st.session_state.cart = new_cart
             st.success("Loaded order into cart. Go to POS page to checkout.")
     else:
