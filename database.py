@@ -1,24 +1,22 @@
 import sqlite3
 from datetime import datetime
-from sqlalchemy import create_engine
-from sqlalchemy.pool import QueuePool
 import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, filename='store.log', format='%(asctime)s %(levelname)s: %(message)s')
 
-DB_NAME = "sqlite:///store.db"
-
-# Create SQLAlchemy engine with connection pooling
-engine = create_engine(DB_NAME, poolclass=QueuePool, pool_size=5, max_overflow=10, pool_timeout=30)
+DB_NAME = "store.db"
 
 def get_connection():
-    return engine.connect()
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=60)  # Increased timeout to 60 seconds
+    conn.execute("PRAGMA journal_mode=WAL;")  # Enable WAL mode
+    conn.execute("PRAGMA busy_timeout=60000;")  # 60 seconds
+    return conn
 
 def init_db():
     conn = get_connection()
     try:
-        c = conn.connection.cursor()
+        c = conn.cursor()
         c.execute("""
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY,
@@ -49,7 +47,7 @@ def init_db():
             FOREIGN KEY(product_id) REFERENCES products(id)
         )
         """)
-        conn.connection.commit()
+        conn.commit()
     except Exception as e:
         logging.error(f"Database initialization failed: {str(e)}")
         raise
@@ -72,7 +70,7 @@ def get_products():
 def update_product_quantity(product_id, qty_sold):
     conn = get_connection()
     try:
-        cur = conn.connection.cursor()
+        cur = conn.cursor()
         cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
         result = cur.fetchone()
         if result is None:
@@ -83,10 +81,10 @@ def update_product_quantity(product_id, qty_sold):
             "UPDATE products SET quantity = quantity - ? WHERE id = ?",
             (int(qty_sold), int(product_id))
         )
-        conn.connection.commit()
+        conn.commit()
     except Exception as e:
         logging.error(f"Error updating product quantity for ID {product_id}: {str(e)}")
-        conn.connection.rollback()
+        conn.rollback()
         raise
     finally:
         conn.close()
@@ -94,7 +92,7 @@ def update_product_quantity(product_id, qty_sold):
 def bulk_upload_products(df, overwrite=False):
     conn = get_connection()
     try:
-        c = conn.connection.cursor()
+        c = conn.cursor()
         if overwrite:
             c.execute("DELETE FROM products")
         for _, row in df.iterrows():
@@ -115,10 +113,10 @@ def bulk_upload_products(df, overwrite=False):
                 int(row["price"]),
                 int(row["quantity"])
             ))
-        conn.connection.commit()
+        conn.commit()
     except Exception as e:
         logging.error(f"Error uploading products: {str(e)}")
-        conn.connection.rollback()
+        conn.rollback()
         raise
     finally:
         conn.close()
@@ -127,8 +125,7 @@ def save_order(cart, total_amount):
     conn = get_connection()
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        c = conn.connection.cursor()
-        c.execute("PRAGMA busy_timeout=60000;")  # 60 seconds
+        c = conn.cursor()
         c.execute("BEGIN IMMEDIATE")
         c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
         order_id = c.lastrowid
@@ -145,11 +142,11 @@ def save_order(cart, total_amount):
                 item["quantity"]
             ))
             update_product_quantity(item["id"], item["quantity"])
-        conn.connection.commit()
+        conn.commit()
         return order_id
     except Exception as e:
         logging.error(f"Order save failed: {str(e)}")
-        conn.connection.rollback()
+        conn.rollback()
         raise Exception(f"Order save failed: {str(e)}")
     finally:
         conn.close()
