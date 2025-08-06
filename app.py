@@ -60,7 +60,7 @@ st.markdown(
         align-items: center;
         gap: 5px;
         margin-top: 10px;
-        flex-direction: row; /* Changed to horizontal */
+        flex-direction: row;
     }
     .qty-button {
         background-color: transparent;
