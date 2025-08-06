@@ -30,15 +30,16 @@ def render_size_buttons(name, available_sizes):
     st.markdown("**SIZE**")
     sizes = ["XS", "S", "M", "L", "XL", "XXL"]
     col_btns = st.columns(len(sizes))
+    session_key = f"selected_size_{name}"
 
-    if f"selected_size_{name}" not in st.session_state:
+    if session_key not in st.session_state:
         for s in sizes:
             if s in available_sizes:
-                st.session_state[f"selected_size_{name}"] = s
+                st.session_state[session_key] = s
                 break
 
     for i, s in enumerate(sizes):
-        selected = st.session_state[f"selected_size_{name}"] == s
+        selected = st.session_state.get(session_key) == s
         in_stock = s in available_sizes
 
         bg = "#333" if selected else "#fff"
@@ -65,7 +66,7 @@ def render_size_buttons(name, available_sizes):
 
         if in_stock:
             if col_btns[i].button(html, key=f"{name}_{s}"):
-                st.session_state[f"selected_size_{name}"] = s
+                st.session_state[session_key] = s
         else:
             col_btns[i].markdown(html, unsafe_allow_html=True)
 
@@ -82,7 +83,7 @@ for name, variants in grouped.items():
     available_sizes = [v["size"] for v in available_variants]
     render_size_buttons(name, available_sizes)
 
-    selected_size = st.session_state[f"selected_size_{name}"]
+    selected_size = st.session_state.get(f"selected_size_{name}")
     selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
     if not selected_variant:
         st.warning("❌ Selected size is currently unavailable.")
@@ -114,7 +115,10 @@ for name, variants in grouped.items():
             if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
                 st.session_state[qty_key] -= 1
         with col_b:
-            st.markdown(f"<div style='text-align:center; font-size:18px; padding-top:10px'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='text-align:center; font-size:18px; padding-top:10px'>{st.session_state[qty_key]}</div>",
+                unsafe_allow_html=True,
+            )
         with col_c:
             if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
                 st.session_state[qty_key] += 1
