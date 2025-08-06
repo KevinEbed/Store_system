@@ -15,8 +15,7 @@ def upload_inventory():
         if st.button("Clear and Replace Data"):
             c = conn.cursor()
             c.execute("DELETE FROM products")
-            # Reset auto-increment if using SQLite sequence
-            c.execute("DELETE FROM sqlite_sequence WHERE name='products'")
+            c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
             conn.commit()
             st.success("All existing data has been cleared. Please upload new data.")
             st.experimental_rerun()
@@ -36,14 +35,14 @@ def upload_inventory():
 
             # Ensure id column exists or generate unique ids
             if "id" not in df.columns:
-                df["id"] = range(1, len(df) + 1)  # Auto-generate ids if missing
+                df["id"] = range(1, len(df) + 1)  # Auto-generate sequential ids
             else:
                 df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
                 if df["id"].duplicated().any():
                     st.warning("Duplicate ids detected. Generating unique ids based on name and size.")
-                    # Create unique ids by combining name and size (if size exists)
+                    # Generate unique ids using name and size
                     df["temp_id"] = df.apply(lambda row: f"{row['name']}_{row.get('size', '')}".replace(" ", "_"), axis=1)
-                    df["id"] = pd.factorize(df["temp_id"])[0] + 1  # Generate unique numeric ids
+                    df["id"] = pd.factorize(df["temp_id"])[0] + 1  # Unique numeric ids starting from 1
 
             # Convert columns to appropriate types and handle NaN
             df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0).astype(int)
@@ -61,8 +60,7 @@ def upload_inventory():
                 else:
                     if overwrite or existing_count == 0:
                         c.execute("DELETE FROM products")
-                        # Reset auto-increment if using SQLite sequence
-                        c.execute("DELETE FROM sqlite_sequence WHERE name='products'")
+                        c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
                     for _, row in df.iterrows():
                         c.execute("""
                             INSERT INTO products (id, name, category, size, price, quantity)
