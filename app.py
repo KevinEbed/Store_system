@@ -70,7 +70,7 @@ def render_size_buttons(name, available_sizes):
         """
 
         if in_stock:
-            if col_btns[i].button(s, key=f"{name}_{s}"):  # Simplified to avoid HTML button issues
+            if col_btns[i].button(s, key=f"{name}_{s}"):
                 st.session_state[session_key] = s
         else:
             col_btns[i].markdown(html, unsafe_allow_html=True)
@@ -136,7 +136,8 @@ for name, variants in grouped.items():
                 st.warning(f"Only {available_stock} left in stock")
             else:
                 item = {
-                    "id": selected_variant["id"],
+                    "id": selected_variant Speculative Type: int
+                    selected_variant["id"],
                     "name": selected_variant["name"],
                     "size": selected_variant["size"],
                     "price": selected_variant["price"],
@@ -187,19 +188,19 @@ if st.session_state.cart:
                 else:
                     success = False
                     attempt = 0
-                    max_attempts = 5  # Increased retries
+                    max_attempts = 5
                     while attempt < max_attempts and not success:
                         attempt += 1
                         try:
                             conn.execute("BEGIN IMMEDIATE;")
-                            order_id = save_order(cart_items, total, conn)  # Pass conn to save_order
+                            order_id = save_order(cart_items, total, conn)
                             conn.commit()
                             success = True
                         except Exception as e:
                             conn.rollback()
                             err_str = str(e).lower()
                             if "locked" in err_str and attempt < max_attempts:
-                                time.sleep(1.0 * attempt)  # Increased backoff
+                                time.sleep(1.0 * attempt)
                             else:
                                 st.error(f"❌ Checkout failed: {e}")
                                 break
@@ -211,7 +212,7 @@ if st.session_state.cart:
                         st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                         st.session_state.cart = {}
                         st.session_state.checkout_in_progress = False
-                        st.rerun()
+                        st.rerun()  # Replaced experimental_rerun
                     else:
                         st.session_state.checkout_in_progress = False
         except Exception as outer_e:
