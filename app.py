@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from database import init_db, get_products, save_order
 
-st.set_page_config(page_title="🛍️ POS System", layout="wide", theme="dark")
+st.set_page_config(page_title="🛍️ POS System", layout="wide")  # removed invalid theme arg
 st.title("🛍️ Clothing Store – Point of Sale")
 
 # ------------------ Init ------------------ #
@@ -29,29 +29,38 @@ for p in products:
 st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
     st.markdown(f"### {name}")
-    
-    available_sizes = [v for v in variants if v["quantity"] > 0]
+
+    available_sizes = [v for v in variants if v.get("quantity", 0) > 0]
     if not available_sizes:
         st.warning("🚫 Out of stock for all sizes.")
         continue
 
     # Initialize or retrieve selected size from session state
-    if f"size_{name}" not in st.session_state:
-        st.session_state[f"size_{name}"] = available_sizes[0]["size"]
-    selected_size = st.session_state[f"size_{name}"]
-    selected_variant = next(v for v in available_sizes if v["size"] == selected_size)
+    size_state_key = f"size_{name}"
+    if size_state_key not in st.session_state or st.session_state[size_state_key] not in [v["size"] for v in available_sizes]:
+        st.session_state[size_state_key] = available_sizes[0]["size"]
+    selected_size = st.session_state[size_state_key]
+
+    # Safely find selected variant; fallback if missing
+    selected_variant = next((v for v in available_sizes if v["size"] == selected_size), available_sizes[0])
 
     # Size selection with buttons
     size_cols = st.columns(len(available_sizes))
     for i, variant in enumerate(available_sizes):
         with size_cols[i]:
             if st.button(variant["size"], key=f"size_btn_{name}_{variant['size']}"):
-                st.session_state[f"size_{name}"] = variant["size"]
-                st.rerun()  # Use st.rerun() instead of experimental_rerun
+                st.session_state[size_state_key] = variant["size"]
+                st.experimental_rerun()
             if selected_size == variant["size"]:
-                st.markdown(f"<div style='text-align:center; background-color:#000; color:#fff; padding:5px;'>{variant['size']}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='text-align:center; background-color:#444; color:#fff; padding:5px; border-radius:4px;'>{variant['size']}</div>",
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown(f"<div style='text-align:center; padding:5px;'>{variant['size']}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='text-align:center; padding:5px; border:1px solid #666; border-radius:4px;'>{variant['size']}</div>",
+                    unsafe_allow_html=True,
+                )
 
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
@@ -66,9 +75,11 @@ for name, variants in grouped.items():
                 st.markdown("🖼 No image")
 
     with col2:
-        st.markdown(f"**Price:** {selected_variant['price']} EGP")
-        st.markdown(f"**Stock Available:** {selected_variant['quantity']}")
-    
+        price = selected_variant.get("price", 0)
+        quantity_available = selected_variant.get("quantity", 0)
+        st.markdown(f"**Price:** {price} EGP")
+        st.markdown(f"**Stock Available:** {quantity_available}")
+
     with col3:
         qty_key = f"qty_{selected_variant['id']}"
         if qty_key not in st.session_state:
@@ -81,13 +92,13 @@ for name, variants in grouped.items():
         with col_b:
             st.markdown(f"<div style='text-align:center; font-size:18px;'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
         with col_c:
-            if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
+            if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < quantity_available:
                 st.session_state[qty_key] += 1
 
         if st.button("ADD TO CART", key=f"add_{selected_variant['id']}", help="Add item to cart"):
             qty = st.session_state[qty_key]
             in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
-            available_stock = selected_variant["quantity"] - in_cart_qty
+            available_stock = quantity_available - in_cart_qty
             if qty > available_stock:
                 st.warning(f"Only {available_stock} left in stock")
             else:
@@ -95,8 +106,8 @@ for name, variants in grouped.items():
                     "id": selected_variant["id"],
                     "name": selected_variant["name"],
                     "size": selected_variant["size"],
-                    "price": selected_variant["price"],
-                    "quantity": qty
+                    "price": price,
+                    "quantity": qty,
                 }
                 if selected_variant["id"] in st.session_state.cart:
                     st.session_state.cart[selected_variant["id"]]["quantity"] += qty
@@ -125,6 +136,7 @@ if st.session_state.cart:
         st.info("Processing checkout...")
     elif st.button("💳 Checkout"):
         st.session_state.checkout_in_progress = True
+        cart_items = list(st.session_state.cart.values())  # refresh in case mutation
         current_ids = {p["id"] for p in reload_products()}
         missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
 
@@ -141,7 +153,8 @@ if st.session_state.cart:
                     order_id = save_order(cart_items, total)
                     success = True
                 except Exception as e:
-                    if "locked" in str(e).lower() and attempt < max_attempts:
+                    err_str = str(e).lower()
+                    if "locked" in err_str and attempt < max_attempts:
                         time.sleep(0.5 * attempt)
                     else:
                         st.error(f"❌ Checkout failed: {e}")
@@ -154,7 +167,7 @@ if st.session_state.cart:
                 st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
                 st.session_state.cart = {}
                 st.session_state.checkout_in_progress = False
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.session_state.checkout_in_progress = False
 else:
