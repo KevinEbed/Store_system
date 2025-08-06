@@ -271,8 +271,11 @@ for name, variants in grouped.items():
                             st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                         else:
                             st.session_state.cart[selected_variant["id"]] = item
-                        # Show temporary message with size
-                        st.success(f"Size: {selected_variant['size'] if selected_variant['size'] else 'N/A'} added to cart", icon="✅")
+                        # Show message with size and quantity or just item name
+                        if len(variants) > 1:
+                            st.success(f"{qty} {name.lower()} size {selected_variant['size']} added to cart", icon="✅")
+                        else:
+                            st.success(f"{qty} {name.lower()} added to cart", icon="✅")
                     else:
                         st.warning(f"Only {available_stock} left in stock", icon="⚠️")
 
