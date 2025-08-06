@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, filename='store.log', format='%(asctime)
 DB_NAME = "store.db"
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=60)  # Increased timeout to 60 seconds
+    conn = sqlite3.connect(DB_NAME, check_same_thread=False, timeout=60)  # 60-second timeout
     conn.execute("PRAGMA journal_mode=WAL;")  # Enable WAL mode
     conn.execute("PRAGMA busy_timeout=60000;")  # 60 seconds
     return conn
@@ -67,8 +67,7 @@ def get_products():
     finally:
         conn.close()
 
-def update_product_quantity(product_id, qty_sold):
-    conn = get_connection()
+def update_product_quantity(product_id, qty_sold, conn):
     try:
         cur = conn.cursor()
         cur.execute("SELECT quantity FROM products WHERE id = ?", (product_id,))
@@ -86,8 +85,6 @@ def update_product_quantity(product_id, qty_sold):
         logging.error(f"Error updating product quantity for ID {product_id}: {str(e)}")
         conn.rollback()
         raise
-    finally:
-        conn.close()
 
 def bulk_upload_products(df, overwrite=False):
     conn = get_connection()
@@ -121,12 +118,10 @@ def bulk_upload_products(df, overwrite=False):
     finally:
         conn.close()
 
-def save_order(cart, total_amount):
-    conn = get_connection()
+def save_order(cart, total_amount, conn):
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
-        c.execute("BEGIN IMMEDIATE")
         c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
         order_id = c.lastrowid
         for item in cart:
@@ -141,15 +136,13 @@ def save_order(cart, total_amount):
                 item["price"],
                 item["quantity"]
             ))
-            update_product_quantity(item["id"], item["quantity"])
+            update_product_quantity(item["id"], item["quantity"], conn)
         conn.commit()
         return order_id
     except Exception as e:
         logging.error(f"Order save failed: {str(e)}")
         conn.rollback()
         raise Exception(f"Order save failed: {str(e)}")
-    finally:
-        conn.close()
 
 def get_order_history():
     conn = get_connection()
