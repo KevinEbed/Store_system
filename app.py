@@ -212,7 +212,7 @@ def render_size_quantities(name, variants):
         if st.button("+", key=f"inc_{qty_key}"):
             st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
             st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True))
 
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
