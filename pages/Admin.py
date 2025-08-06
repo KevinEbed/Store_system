@@ -17,7 +17,7 @@ def upload_inventory():
             c.execute("DELETE FROM products")
             conn.commit()
             st.success("All existing data has been cleared. Please upload new data.")
-            st.experimental_rerun()
+            st.rerun()
 
     if uploaded_file:
         if uploaded_file.name.lower().endswith(".csv"):
