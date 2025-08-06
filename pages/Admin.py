@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import io
 from database import get_connection, init_db
 
 st.set_page_config(page_title="Admin Upload", layout="wide")
@@ -11,6 +10,14 @@ def upload_inventory():
     uploaded_file = st.file_uploader("Excel or CSV", type=["xlsx", "csv"])
     conn = get_connection()
     existing_count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+
+    if existing_count > 0:
+        if st.button("Clear and Replace Data"):
+            c = conn.cursor()
+            c.execute("DELETE FROM products")
+            conn.commit()
+            st.success("All existing data has been cleared. Please upload new data.")
+            st.experimental_rerun()
 
     if uploaded_file:
         if uploaded_file.name.lower().endswith(".csv"):
@@ -26,7 +33,7 @@ def upload_inventory():
             if existing_count > 0 and not overwrite:
                 st.warning("Products exist; enable overwrite to replace.")
             else:
-                if overwrite:
+                if overwrite or existing_count == 0:
                     c.execute("DELETE FROM products")
                 for _, row in df.iterrows():
                     c.execute("""
