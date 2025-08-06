@@ -13,10 +13,10 @@ def upload_inventory():
 
     if existing_count > 0:
         if st.button("Clear and Replace Data"):
-            c = conn.connection.cursor()
+            c = conn.cursor()
             c.execute("DELETE FROM products")
             c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
-            conn.connection.commit()
+            conn.commit()
             st.success("All existing data has been cleared. Please upload new data.")
             st.experimental_rerun()
 
@@ -54,7 +54,7 @@ def upload_inventory():
 
             overwrite = st.checkbox("Overwrite existing products?", value=False, disabled=(existing_count == 0))
             if st.button("Upload to Database"):
-                c = conn.connection.cursor()
+                c = conn.cursor()
                 if existing_count > 0 and not overwrite:
                     st.warning("Products exist; enable overwrite to replace.")
                 else:
@@ -73,7 +73,7 @@ def upload_inventory():
                             row["price"],
                             row["quantity"]
                         ))
-                    conn.connection.commit()
+                    conn.commit()
                     st.success("Inventory uploaded successfully.")
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
