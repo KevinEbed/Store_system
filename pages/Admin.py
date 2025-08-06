@@ -18,7 +18,7 @@ def upload_inventory():
             c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
             conn.commit()
             st.success("All existing data has been cleared. Please upload new data.")
-            st.rerun()
+            st.experimental_rerun()
 
     if uploaded_file:
         try:
@@ -40,7 +40,6 @@ def upload_inventory():
                 df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
                 if df["id"].duplicated().any():
                     st.warning("Duplicate ids detected. Generating unique ids based on name and size.")
-                    # Generate unique ids using name and size
                     df["temp_id"] = df.apply(lambda row: f"{row['name']}_{row.get('size', '')}".replace(" ", "_"), axis=1)
                     df["id"] = pd.factorize(df["temp_id"])[0] + 1  # Unique numeric ids starting from 1
 
