@@ -25,22 +25,69 @@ grouped = {}
 for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
+# ------------------ Helper: Render Size Buttons ------------------ #
+def render_size_buttons(name, available_sizes):
+    st.markdown("**SIZE**")
+    sizes = ["XS", "S", "M", "L", "XL", "XXL"]
+    col_btns = st.columns(len(sizes))
+
+    if f"selected_size_{name}" not in st.session_state:
+        for s in sizes:
+            if s in available_sizes:
+                st.session_state[f"selected_size_{name}"] = s
+                break
+
+    for i, s in enumerate(sizes):
+        selected = st.session_state[f"selected_size_{name}"] == s
+        in_stock = s in available_sizes
+
+        bg = "#333" if selected else "#fff"
+        color = "#fff" if selected else "#000"
+        border = "#444" if in_stock else "#ccc"
+        opacity = "1" if in_stock else "0.5"
+        cursor = "pointer" if in_stock else "not-allowed"
+
+        html = f"""
+        <div style="
+            background-color:{bg};
+            color:{color};
+            border:2px solid {border};
+            border-radius:6px;
+            padding:8px;
+            text-align:center;
+            font-weight:bold;
+            opacity:{opacity};
+            cursor:{cursor};
+        ">
+        {s}
+        </div>
+        """
+
+        if in_stock:
+            if col_btns[i].button(html, key=f"{name}_{s}"):
+                st.session_state[f"selected_size_{name}"] = s
+        else:
+            col_btns[i].markdown(html, unsafe_allow_html=True)
+
 # ------------------ Product Display ------------------ #
 st.markdown("## 🛍️ Products")
 for name, variants in grouped.items():
     st.markdown(f"### {name}")
-    
-    available_sizes = [v for v in variants if v["quantity"] > 0]
-    if not available_sizes:
+
+    available_variants = [v for v in variants if v["quantity"] > 0]
+    if not available_variants:
         st.warning("🚫 Out of stock for all sizes.")
         continue
 
-    size_options = [f"{v['size']} (Stock: {v['quantity']})" for v in available_sizes]
-    size_mapping = {f"{v['size']} (Stock: {v['quantity']})": v for v in available_sizes}
-    
-    selected_size_display = st.selectbox(f"Select size for {name}", size_options, key=f"size_{name}")
-    selected_variant = size_mapping[selected_size_display]
-    
+    available_sizes = [v["size"] for v in available_variants]
+    render_size_buttons(name, available_sizes)
+
+    selected_size = st.session_state[f"selected_size_{name}"]
+    selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
+    if not selected_variant:
+        st.warning("❌ Selected size is currently unavailable.")
+        continue
+
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         image_path = f"data/images/{selected_variant['id']}.jpg"
@@ -56,7 +103,7 @@ for name, variants in grouped.items():
     with col2:
         st.markdown(f"**Price:** {selected_variant['price']} EGP")
         st.markdown(f"**Stock Available:** {selected_variant['quantity']}")
-    
+
     with col3:
         qty_key = f"qty_{selected_variant['id']}"
         if qty_key not in st.session_state:
@@ -67,7 +114,7 @@ for name, variants in grouped.items():
             if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
                 st.session_state[qty_key] -= 1
         with col_b:
-            st.markdown(f"<div style='text-align:center'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; font-size:18px; padding-top:10px'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
         with col_c:
             if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < selected_variant["quantity"]:
                 st.session_state[qty_key] += 1
