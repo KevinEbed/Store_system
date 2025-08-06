@@ -150,86 +150,62 @@ if st.session_state.cart:
         st.session_state.cart = {}
         st.success("🧹 Cart cleared.")
 
-    if st.session_state.checkout_in_progress:
-        st.info("Processing checkout...")
-    elif st.button("💳 Checkout"):
-        st.session_state.checkout_in_progress = True
-
+if st.button("💳 Checkout"):
+    st.session_state.checkout_in_progress = True
+    
+    try:
         # Build the flattened cart item list
         cart_items = []
         for name, item in st.session_state.cart.items():
             for size, qty in item["sizes"].items():
-                # find variant for id
-                variant = next((v for v in products if v["name"] == name and v.get("size") == size), None)
-                if variant:
-                    cart_items.append({
-                        "id": variant["id"],
-                        "name": name,
-                        "size": size,
-                        "price": item["price"],
-                        "quantity": qty  # keep quantity here; save_order can interpret per-item quantity
-                    })
+                # Find variant for id - need to use the same connection for consistency
+                with get_connection() as conn:
+                    cursor = conn.execute("SELECT id FROM products WHERE name = ? AND size = ?", (name, size))
+                    result = cursor.fetchone()
+                    if result:
+                        cart_items.append({
+                            "id": result[0],
+                            "name": name,
+                            "size": size,
+                            "price": item["price"],
+                            "quantity": qty
+                        })
+
+        if not cart_items:
+            st.error("No valid items in cart")
+            st.session_state.checkout_in_progress = False
+            return
 
         # Recompute total properly
         total = sum(ci["price"] * ci["quantity"] for ci in cart_items)
 
+        # Use a single connection for the entire transaction
+        conn = get_connection()
         try:
-            with get_connection() as conn:
-                # Enable WAL and set a reasonable busy timeout
-                conn.execute("PRAGMA journal_mode=WAL;")
-                conn.execute("PRAGMA busy_timeout=30000;")  # 30 seconds
-
-                # Reload product IDs inside same connection to avoid stale/mismatched views
-                current_ids = {p["id"] for p in get_products()}  # assuming get_products uses same DB path
-
-                # Expand cart_items into per-unit entries if save_order expects that
-                expanded_items = []
-                for ci in cart_items:
-                    for _ in range(ci["quantity"]):
-                        expanded_items.append({
-                            "id": ci["id"],
-                            "name": ci["name"],
-                            "size": ci["size"],
-                            "price": ci["price"],
-                            "quantity": 1
-                        })
-
-                missing = [item["id"] for item in expanded_items if item["id"] not in current_ids]
-                if missing:
-                    st.error(f"❌ Product ID(s) missing: {missing}")
-                    st.session_state.checkout_in_progress = False
-                else:
-                    success = False
-                    attempt = 0
-                    max_attempts = 3
-                    while attempt < max_attempts and not success:
-                        attempt += 1
-                        try:
-                            # Begin immediate transaction to acquire write lock early
-                            conn.execute("BEGIN IMMEDIATE;")
-                            order_id = save_order(expanded_items, total)  # ensure save_order uses the same DB file/connection internally
-                            conn.commit()
-                            success = True
-                        except Exception as e:
-                            err_str = str(e).lower()
-                            conn.rollback()
-                            if "locked" in err_str and attempt < max_attempts:
-                                backoff = 0.5 * attempt
-                                time.sleep(backoff)
-                            else:
-                                st.error(f"❌ Checkout failed: {e}")
-                                break
-
-                    if success:
-                        st.success("✅ Order complete. Receipt saved.")
-                        st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
-                        st.markdown(f"- 💰 **Total:** `{total} EGP`")
-                        st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-                        st.session_state.cart = {}
-                        st.session_state.checkout_in_progress = False
-                        st.experimental_rerun()
-                    else:
-                        st.session_state.checkout_in_progress = False
-        except Exception as outer_e:
-            st.error(f"Unexpected error during checkout: {outer_e}")
-            st.session_state.checkout_in_progress = False
+            # Begin transaction
+            conn.execute("BEGIN IMMEDIATE")
+            
+            # Save the order
+            order_id = save_order(cart_items, total)
+            
+            # Commit if everything succeeded
+            conn.commit()
+            
+            st.success("✅ Order complete. Receipt saved.")
+            st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+            st.markdown(f"- 💰 **Total:** `{total} EGP`")
+            st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+            st.session_state.cart = {}
+            st.experimental_rerun()
+            
+        except Exception as e:
+            conn.rollback()
+            st.error(f"❌ Checkout failed: {str(e)}")
+            raise
+        finally:
+            conn.close()
+            
+    except Exception as e:
+        st.error(f"Error during checkout: {str(e)}")
+    finally:
+        st.session_state.checkout_in_progress = False
