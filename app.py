@@ -3,15 +3,16 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
-from database import init_db, get_products, save_order
+from database import init_db, get_products, save_order, get_connection
 
+# ------------------ POS System ------------------ #
 st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
 
 # ------------------ Init ------------------ #
 init_db()
 if "cart" not in st.session_state:
-    st.session_state.cart = {}
+    st.session_state.cart = {}  # Store by name: {name: {"sizes": {size: quantity}, "price": float}}
 if "checkout_in_progress" not in st.session_state:
     st.session_state.checkout_in_progress = False
 
@@ -70,7 +71,7 @@ for name, variants in grouped.items():
         # No sizes, use the first (and only) variant
         selected_variant = available_variants[0]
 
-    # Product details
+    # Product details (use the first variant's price as the base price)
     col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         image_path = f"data/images/{selected_variant['id']}.jpg"
@@ -85,53 +86,56 @@ for name, variants in grouped.items():
 
     with col2:
         price = selected_variant.get("price", 0)
-        quantity_available = selected_variant.get("quantity", 0)
+        total_quantity = sum(v["quantity"] for v in available_variants)
         st.markdown(f"**Price:** {price} EGP")
-        st.markdown(f"**Stock Available:** {quantity_available}")
+        st.markdown(f"**Total Stock Available:** {total_quantity}")
 
     with col3:
-        qty_key = f"qty_{selected_variant['id']}"
+        qty_key = f"qty_{name}"  # Use name as key instead of id
         if qty_key not in st.session_state:
             st.session_state[qty_key] = 1
 
         col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_a:
-            if st.button("-", key=f"dec_{selected_variant['id']}") and st.session_state[qty_key] > 1:
+            if st.button("-", key=f"dec_{name}") and st.session_state[qty_key] > 1:
                 st.session_state[qty_key] -= 1
         with col_b:
             st.markdown(f"<div style='text-align:center; font-size:18px;'>{st.session_state[qty_key]}</div>", unsafe_allow_html=True)
         with col_c:
-            if st.button("+", key=f"inc_{selected_variant['id']}") and st.session_state[qty_key] < quantity_available:
+            if st.button("+", key=f"inc_{name}") and st.session_state[qty_key] < total_quantity:
                 st.session_state[qty_key] += 1
 
-        if st.button("ADD TO CART", key=f"add_{selected_variant['id']}"):
+        if st.button("ADD TO CART", key=f"add_{name}"):
             qty = st.session_state[qty_key]
-            in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
-            available_stock = quantity_available - in_cart_qty
+            available_stock = total_quantity
             if qty > available_stock:
-                st.warning(f"Only {available_stock} left in stock")
+                st.warning(f"Only {available_stock} left in stock across all sizes")
             else:
-                item = {
-                    "id": selected_variant["id"],
-                    "name": selected_variant["name"],
-                    "size": selected_variant.get("size", ""),
-                    "price": price,
-                    "quantity": qty,
-                }
-                if selected_variant["id"] in st.session_state.cart:
-                    st.session_state.cart[selected_variant["id"]]["quantity"] += qty
-                else:
-                    st.session_state.cart[selected_variant["id"]] = item
-                st.success(f"✅ Added {qty} x {selected_variant['name']} ({selected_variant.get('size', 'N/A')})")
+                # Initialize cart entry for this name if not exists
+                if name not in st.session_state.cart:
+                    st.session_state.cart[name] = {"sizes": {}, "price": price}
+                # Update size quantities
+                if selected_size:
+                    st.session_state.cart[name]["sizes"][selected_size] = st.session_state.cart[name]["sizes"].get(selected_size, 0) + qty
+                st.success(f"✅ Added {qty} x {name} ({selected_size or 'N/A'}) to cart")
 
 # ------------------ Cart Display ------------------ #
 st.markdown("---")
 st.markdown("## 🛒 Cart")
 
 if st.session_state.cart:
-    cart_items = list(st.session_state.cart.values())
+    cart_items = []
+    for name, item in st.session_state.cart.items():
+        total_qty = sum(item["sizes"].values())
+        total_price = item["price"] * total_qty
+        cart_items.append({
+            "name": name,
+            "size": ", ".join([f"{size} ({qty})" for size, qty in item["sizes"].items()]),
+            "price": item["price"],
+            "quantity": total_qty,
+            "total": total_price
+        })
     cart_df = pd.DataFrame(cart_items)
-    cart_df["total"] = cart_df["price"] * cart_df["quantity"]
     st.dataframe(cart_df[["name", "size", "price", "quantity", "total"]], use_container_width=True)
 
     total = cart_df["total"].sum()
@@ -145,7 +149,22 @@ if st.session_state.cart:
         st.info("Processing checkout...")
     elif st.button("💳 Checkout"):
         st.session_state.checkout_in_progress = True
-        cart_items = list(st.session_state.cart.values())  # refresh in case mutation
+        cart_items = []
+        for name, item in st.session_state.cart.items():
+            total_qty = sum(item["sizes"].values())
+            # Convert cart item to a list of individual items for save_order
+            for size, qty in item["sizes"].items():
+                for _ in range(qty):
+                    # Find a variant with matching size and name to get id
+                    variant = next((v for v in products if v["name"] == name and v.get("size") == size), None)
+                    if variant:
+                        cart_items.append({
+                            "id": variant["id"],
+                            "name": name,
+                            "size": size,
+                            "price": item["price"],
+                            "quantity": 1
+                        })
         current_ids = {p["id"] for p in reload_products()}
         missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
 
@@ -181,3 +200,81 @@ if st.session_state.cart:
                 st.session_state.checkout_in_progress = False
 else:
     st.info("🛒 Cart is empty.")
+
+# ------------------ Admin Upload ------------------ #
+st.markdown("---")
+st.header("Admin Upload")
+uploaded_file = st.file_uploader("Excel or CSV", type=["xlsx", "csv"])
+conn = get_connection()
+existing_count = conn.execute("SELECT COUNT(*) FROM products").fetchone()[0]
+
+if existing_count > 0:
+    if st.button("Clear and Replace Data"):
+        c = conn.cursor()
+        c.execute("DELETE FROM products")
+        c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
+        conn.commit()
+        st.success("All existing data has been cleared. Please upload new data.")
+        st.experimental_rerun()
+
+if uploaded_file:
+    try:
+        if uploaded_file.name.lower().endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
+
+        # Validate required columns
+        required_columns = {"name", "price", "quantity"}
+        if not all(col in df.columns for col in required_columns):
+            st.error("Uploaded file must contain columns: name, price, quantity.")
+            return
+
+        # Ensure id column exists or generate unique ids
+        if "id" not in df.columns:
+            df["id"] = range(1, len(df) + 1)  # Auto-generate sequential ids
+        else:
+            df["id"] = pd.to_numeric(df["id"], errors="coerce").fillna(0).astype(int)
+            if df["id"].duplicated().any():
+                st.warning("Duplicate ids detected. Generating unique ids based on name and size.")
+                # Generate unique ids using name and size
+                df["temp_id"] = df.apply(lambda row: f"{row['name']}_{row.get('size', '')}".replace(" ", "_"), axis=1)
+                df["id"] = pd.factorize(df["temp_id"])[0] + 1  # Unique numeric ids starting from 1
+
+        # Convert columns to appropriate types and handle NaN
+        df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0).astype(int)
+        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce").fillna(0).astype(int)
+        df["category"] = df["category"].fillna("")
+        df["size"] = df["size"].fillna("")
+
+        st.dataframe(df)
+
+        overwrite = st.checkbox("Overwrite existing products?", value=False, disabled=(existing_count == 0))
+        if st.button("Upload to Database"):
+            c = conn.cursor()
+            if existing_count > 0 and not overwrite:
+                st.warning("Products exist; enable overwrite to replace.")
+            else:
+                if overwrite or existing_count == 0:
+                    c.execute("DELETE FROM products")
+                    c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
+                for _, row in df.iterrows():
+                    c.execute("""
+                        INSERT INTO products (id, name, category, size, price, quantity)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        row["id"],
+                        row["name"],
+                        row["category"],
+                        row["size"],
+                        row["price"],
+                        row["quantity"]
+                    ))
+                conn.commit()
+                st.success("Inventory uploaded successfully.")
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
+    finally:
+        conn.close()
+else:
+    conn.close()
