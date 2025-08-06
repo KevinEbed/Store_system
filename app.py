@@ -259,9 +259,7 @@ for name, variants in grouped.items():
                     in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
                     available_stock = selected_variant["quantity"] - in_cart_qty
                     
-                    if qty > available_stock:
-                        st.session_state.warnings[name] = f"Only {available_stock} left in stock"
-                    else:
+                    if qty <= available_stock:
                         item = {
                             "id": selected_variant["id"],
                             "name": selected_variant["name"],
@@ -273,8 +271,10 @@ for name, variants in grouped.items():
                             st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                         else:
                             st.session_state.cart[selected_variant["id"]] = item
-                        st.session_state.warnings[name] = f"✅ Added {qty} x {selected_variant['name']}" + \
-                            (f" ({selected_variant['size']})" if len(variants) > 1 else "")
+                        # Removed warning message setting
+                    else:
+                        # Optionally handle out-of-stock case without warning
+                        pass
 
     if st.session_state.warnings.get(name):
         st.markdown(f"<div class='warning-box'>{st.session_state.warnings[name]}</div>", unsafe_allow_html=True)
