@@ -197,13 +197,13 @@ def render_size_quantities(name, variants):
         st.markdown('<div class="qty-container">', unsafe_allow_html=True)
         if st.button("−", key=f"dec_{qty_key}"):
             st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-            st.experimental_rerun()
+            st.rerun()
         
         st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
         
         if st.button("+", key=f"inc_{qty_key}"):
             st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-            st.experimental_rerun()
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -318,7 +318,7 @@ if st.session_state.cart:
                             st.session_state.cart = {}
                             st.session_state.checkout_in_progress = False
                             st.session_state.warnings["checkout"] = ""
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.session_state.checkout_in_progress = False
             except Exception as outer_e:
