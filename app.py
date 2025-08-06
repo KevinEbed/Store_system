@@ -18,9 +18,8 @@ if "checkout_in_progress" not in st.session_state:
 
 def reload_products():
     try:
-        with get_connection() as conn:
-            products = get_products(conn) if 'conn' in get_products.__code__.co_varnames else get_products()
-            return products if products else []
+        products = get_products()  # Call without passing conn
+        return products if products else []
     except Exception as e:
         st.error(f"Error loading products: {str(e)}")
         return []
@@ -172,7 +171,7 @@ if st.session_state.cart:
                                 "price": item["price"],
                                 "quantity": 1
                             })
-            current_ids = {p["id"] for p in get_products(conn)}  # Reload products within the same connection
+            current_ids = {p["id"] for p in get_products()}  # Reload products without passing conn
             missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
 
             if missing:
@@ -185,7 +184,7 @@ if st.session_state.cart:
                 while attempt < max_attempts and not success:
                     attempt += 1
                     try:
-                        order_id = save_order(cart_items, total, conn)  # Pass connection to save_order
+                        order_id = save_order(cart_items, total)  # Call without passing conn
                         success = True
                     except Exception as e:
                         err_str = str(e).lower()
