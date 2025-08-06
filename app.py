@@ -139,6 +139,7 @@ for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
+# Inside render_size_quantities function (for items with sizes)
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -170,25 +171,42 @@ def render_size_quantities(name, variants):
                 else:
                     st.markdown(f'<div class="{button_class}">X</div>', unsafe_allow_html=True)
 
-        # Quantity controls for selected size
+        # Quantity controls for selected size in a single bar
         selected_size = st.session_state.get(session_key)
         if selected_size and selected_size in available_sizes:
             variant = next(v for v in variants if v["size"] == selected_size)
             qty_key = f"qty_{name}_{selected_size}"
             if qty_key not in st.session_state.quantities:
                 st.session_state.quantities[qty_key] = 1
-                
-            col_q1, col_q2, col_q3 = st.columns([1, 1, 1])  # Use columns for horizontal layout
-            with col_q1:
-                if st.button(" − ", key=f"dec_{qty_key}", help="Decrease quantity"):
-                    st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-                    st.rerun()
-            with col_q2:
-                st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
-            with col_q3:
-                if st.button(" + ", key=f"inc_{qty_key}", help="Increase quantity", use_container_width=False):
-                    st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-                    st.rerun()
+            
+            st.markdown(
+                f"""
+                <div style='display: flex; align-items: center; border: 2px solid #ffffff; border-radius: 5px; padding: 5px;'>
+                    <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("decrease"))'>−</button>
+                    <span style='padding: 0 15px; font-size: 20px; color: white;'>{st.session_state.quantities[qty_key]}</span>
+                    <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("increase"))'>+</button>
+                </div>
+                <script>
+                    const qtyDiv = document.currentScript.previousElementSibling;
+                    qtyDiv.querySelector('button:nth-child(1)').addEventListener('decrease', () => {{
+                        let qty = {st.session_state.quantities[qty_key]};
+                        if (qty > 1) {{
+                            qty -= 1;
+                            parent.window.location.reload();
+                        }}
+                    }});
+                    qtyDiv.querySelector('button:nth-child(3)').addEventListener('increase', () => {{
+                        let qty = {st.session_state.quantities[qty_key]};
+                        if (qty < {variant["quantity"]}) {{
+                            qty += 1;
+                            parent.window.location.reload();
+                        }}
+                    }});
+                </script>
+                """,
+                unsafe_allow_html=True
+            )
+
     else:
         # For items without sizes
         variant = variants[0]
@@ -197,17 +215,33 @@ def render_size_quantities(name, variants):
             st.session_state.quantities[qty_key] = 1
             
         st.markdown("**Quantity**", unsafe_allow_html=True)
-        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])  # Use columns for horizontal layout
-        with col_q1:
-            if st.button("−", key=f"dec_{qty_key}", help="Decrease quantity"):
-                st.session_state.quantities[qty_key] = max(1, st.session_state.quantities[qty_key] - 1)
-                st.rerun()
-        with col_q2:
-            st.markdown(f'<div class="qty-display">{st.session_state.quantities[qty_key]}</div>', unsafe_allow_html=True)
-        with col_q3:
-            if st.button("+", key=f"inc_{qty_key}", help="Increase quantity"):
-                st.session_state.quantities[qty_key] = min(variant["quantity"], st.session_state.quantities[qty_key] + 1)
-                st.rerun()
+        st.markdown(
+            f"""
+            <div style='display: flex; align-items: center; border: 2px solid #ffffff; border-radius: 5px; padding: 5px;'>
+                <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("decrease"))'>−</button>
+                <span style='padding: 0 15px; font-size: 20px; color: white;'>{st.session_state.quantities[qty_key]}</span>
+                <button style='background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px 10px; margin: 0;' onclick='this.dispatchEvent(new Event("increase"))'>+</button>
+            </div>
+            <script>
+                const qtyDiv = document.currentScript.previousElementSibling;
+                qtyDiv.querySelector('button:nth-child(1)').addEventListener('decrease', () => {{
+                    let qty = {st.session_state.quantities[qty_key]};
+                    if (qty > 1) {{
+                        qty -= 1;
+                        parent.window.location.reload();
+                    }}
+                }});
+                qtyDiv.querySelector('button:nth-child(3)').addEventListener('increase', () => {{
+                    let qty = {st.session_state.quantities[qty_key]};
+                    if (qty < {variant["quantity"]}) {{
+                        qty += 1;
+                        parent.window.location.reload();
+                    }}
+                }});
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
 
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
