@@ -162,7 +162,6 @@ for p in products:
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
 # Inside render_size_quantities function
-# Inside render_size_quantities function
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -172,28 +171,25 @@ def render_size_quantities(name, variants):
         all_sizes = sorted(set(v["size"] for v in variants))
         available_sizes = sorted(set(v["size"] for v in available_variants))
         session_key = f"selected_size_{name}"
-        size_locked_key = f"size_locked_{name}"
+        qty_key_prefix = f"qty_{name}_"
 
-        # Initialize selected size and lock status
+        # Initialize selected size
         if session_key not in st.session_state:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
-        if size_locked_key not in st.session_state:
-            st.session_state[size_locked_key] = False
 
         # Use columns to place size and quantity side by side
         col1, col2 = st.columns(2)
 
         with col1:
-            # Size dropdown (lock after first selection with confirmation)
-            if not st.session_state[size_locked_key]:
-                selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
-                if selected_size != st.session_state[session_key]:
-                    if st.button("Lock Size", key=f"lock_size_{name}"):
-                        st.session_state[session_key] = selected_size
-                        st.session_state[size_locked_key] = True
-                        st.rerun()
-            else:
-                st.write(f"Size: {st.session_state[session_key]} (Locked)")
+            # Size dropdown (freely selectable with update trigger)
+            selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
+            if selected_size != st.session_state[session_key]:
+                st.session_state[session_key] = selected_size
+                # Clear previous quantity to force recalculation
+                for key in list(st.session_state.quantities.keys()):
+                    if key.startswith(qty_key_prefix):
+                        del st.session_state.quantities[key]
+                st.rerun()
 
         with col2:
             # Quantity dropdown for selected size with dynamic stock
