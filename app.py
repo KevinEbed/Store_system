@@ -174,37 +174,34 @@ if st.button("💳 Checkout"):
         if not cart_items:
             st.error("No valid items in cart")
             st.session_state.checkout_in_progress = False
-            return
+        else:
+            # Recompute total properly
+            total = sum(ci["price"] * ci["quantity"] for ci in cart_items)
 
-        # Recompute total properly
-        total = sum(ci["price"] * ci["quantity"] for ci in cart_items)
-
-        # Use a single connection for the entire transaction
-        conn = get_connection()
-        try:
-            # Begin transaction
-            conn.execute("BEGIN IMMEDIATE")
-            
-            # Save the order
-            order_id = save_order(cart_items, total)
-            
-            # Commit if everything succeeded
-            conn.commit()
-            
-            st.success("✅ Order complete. Receipt saved.")
-            st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
-            st.markdown(f"- 💰 **Total:** `{total} EGP`")
-            st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-            st.session_state.cart = {}
-            st.experimental_rerun()
-            
-        except Exception as e:
-            conn.rollback()
-            st.error(f"❌ Checkout failed: {str(e)}")
-            raise
-        finally:
-            conn.close()
-            
+            # Use a single connection for the entire transaction
+            conn = get_connection()
+            try:
+                # Begin transaction
+                conn.execute("BEGIN IMMEDIATE")
+                
+                # Save the order
+                order_id = save_order(cart_items, total)
+                
+                # Commit if everything succeeded
+                conn.commit()
+                
+                st.success("✅ Order complete. Receipt saved.")
+                st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+                st.markdown(f"- 💰 **Total:** `{total} EGP`")
+                st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+                st.session_state.cart = {}
+                st.experimental_rerun()
+                
+            except Exception as e:
+                conn.rollback()
+                st.error(f"❌ Checkout failed: {str(e)}")
+            finally:
+                conn.close()
     except Exception as e:
         st.error(f"Error during checkout: {str(e)}")
     finally:
