@@ -8,7 +8,7 @@ from database import init_db, get_products, save_order
 st.set_page_config(page_title="🛍️ POS System", layout="wide")
 st.title("🛍️ Clothing Store – Point of Sale")
 
-# Initialize
+# Initialize DB / cart
 init_db()
 if "cart" not in st.session_state:
     st.session_state.cart = {}
@@ -20,7 +20,7 @@ def reload_products():
 
 products = reload_products()
 
-# Group by name
+# Group variants by product name
 grouped = {}
 for p in products:
     grouped.setdefault(p["name"], []).append(p)
@@ -29,70 +29,51 @@ st.markdown("## 🛍️ Products")
 
 for name, variants in grouped.items():
     st.markdown(f"### {name}")
-    col1, col2 = st.columns([1, 3])
-
-    with col1:
-        img_path = f"data/images/{variants[0]['id']}.jpg"
-        placeholder = "data/images/placeholder.jpg"
-        if os.path.exists(img_path):
-            st.image(img_path, width=120)
-        elif os.path.exists(placeholder):
-            st.image(placeholder, width=120)
-        else:
-            st.markdown("🖼 No image")
-
-    with col2:
-        # Determine if multiple sizes exist
-        sizes = sorted({v["size"] for v in variants if v.get("size")})
-        if sizes:
-            size_key = f"size_{name}"
-            selected_size = st.radio("Size", sizes, key=size_key)
-            variant = next((v for v in variants if v["size"] == selected_size), None)
-            if variant is None:
-                st.warning("Selected size unavailable.")
-                continue
-        else:
-            variant = variants[0]
-
-        in_cart_qty = st.session_state.cart.get(variant["id"], {}).get("quantity", 0)
-        available_stock = max(variant["quantity"] - in_cart_qty, 0)
-
-        st.markdown(f"**Price:** {variant['price']} EGP")
-        st.markdown(f"**Stock:** {available_stock}")
-
-        qty_key = f"qty_{variant['id']}"
-        if qty_key not in st.session_state:
-            st.session_state[qty_key] = 1
-
-        controls = st.columns([1,2,1])
-        with controls[0]:
-            if st.button("➖", key=f"dec_{variant['id']}") and st.session_state[qty_key] > 1:
-                st.session_state[qty_key] -= 1
-        with controls[1]:
-            st.markdown(f"<div style='text-align:center'>{st.session_state[qty_key']}</div>", unsafe_allow_html=True)
-        with controls[2]:
-            if st.button("➕", key=f"inc_{variant['id']}") and st.session_state[qty_key] < available_stock:
-                st.session_state[qty_key] += 1
-
-        if available_stock == 0:
-            st.warning("Out of stock")
-        elif st.button("➕ Add to Cart", key=f"add_{variant['id']}"):
-            qty_to_add = st.session_state[qty_key]
-            if qty_to_add > available_stock:
-                st.warning(f"Only {available_stock} left")
+    for variant in variants:
+        col1, col2, col3, col4 = st.columns([1.2, 1, 1, 1])
+        with col1:
+            image_path = f"data/images/{variant['id']}.jpg"
+            if os.path.exists(image_path):
+                st.image(image_path, width=100)
             else:
-                entry = {
-                    "id": variant["id"],
-                    "name": variant["name"],
-                    "size": variant.get("size", ""),
-                    "price": variant["price"],
-                    "quantity": qty_to_add
-                }
-                if variant["id"] in st.session_state.cart:
-                    st.session_state.cart[variant["id"]]["quantity"] += qty_to_add
+                placeholder = "data/images/placeholder.jpg"
+                if os.path.exists(placeholder):
+                    st.image(placeholder, width=100)
                 else:
-                    st.session_state.cart[variant["id"]] = entry
-                st.success(f"Added {qty_to_add} x {variant['name']} ({variant.get('size','')})")
+                    st.markdown("🖼 No image")
+        with col2:
+            st.markdown(f"**Size:** {variant['size']}")
+            st.markdown(f"Price: {variant['price']} EGP")
+            in_cart_qty = st.session_state.cart.get(variant["id"], {}).get("quantity", 0)
+            available_stock = max(variant["quantity"] - in_cart_qty, 0)
+            st.markdown(f"Stock: {available_stock}")
+        with col3:
+            qty = st.number_input(
+                "Qty",
+                min_value=1,
+                max_value=available_stock if available_stock > 0 else 1,
+                step=1,
+                key=f"qty_{variant['id']}"
+            )
+        with col4:
+            if available_stock == 0:
+                st.warning("Out of stock")
+            elif st.button("➕ Add to Cart", key=f"add_{variant['id']}"):
+                if qty <= available_stock:
+                    entry = {
+                        "id": variant["id"],
+                        "name": variant["name"],
+                        "size": variant["size"],
+                        "price": variant["price"],
+                        "quantity": qty
+                    }
+                    if variant["id"] in st.session_state.cart:
+                        st.session_state.cart[variant["id"]]["quantity"] += qty
+                    else:
+                        st.session_state.cart[variant["id"]] = entry
+                    st.success(f"Added {qty} x {variant['name']} ({variant['size']})")
+                else:
+                    st.warning(f"Only {available_stock} left in stock")
 
 st.markdown("---")
 st.markdown("## 🛒 Cart")
@@ -113,6 +94,7 @@ if st.session_state.cart:
         st.info("Processing checkout...")
     elif st.button("💳 Checkout"):
         st.session_state.checkout_in_progress = True
+        # Validate existence
         current_ids = {p["id"] for p in reload_products()}
         missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
         if missing:
@@ -134,7 +116,7 @@ if st.session_state.cart:
                         st.error(f"Checkout failed: {e}")
                         break
             if success:
-                st.success("Order complete.")
+                st.success("Order complete. Receipt saved.")
                 st.markdown(f"- **Order ID:** {order_id}")
                 st.markdown(f"- **Total:** {total} EGP")
                 st.markdown(f"- **Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
