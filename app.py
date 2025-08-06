@@ -289,15 +289,35 @@ if st.session_state.cart:
     cart_items = list(st.session_state.cart.values())
     cart_df = pd.DataFrame(cart_items)
     cart_df["total"] = cart_df["price"] * cart_df["quantity"]
+    
+    # Add delete button column
+    cart_df["Action"] = [f"🗑️" for _ in range(len(cart_df))]
+    
     st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'>", unsafe_allow_html=True)
-    st.dataframe(cart_df[["name", "size", "price", "quantity", "total"]], use_container_width=True)
+    # Display DataFrame with custom rendering for the delete button
+    st.dataframe(
+        cart_df[["name", "size", "price", "quantity", "total", "Action"]],
+        use_container_width=True,
+        hide_index=True,
+        on_select="ignore"  # Prevent default selection behavior
+    )
+    
+    # Handle delete button clicks
+    for index, row in cart_df.iterrows():
+        if st.button("🗑️", key=f"delete_{row['id']}"):
+            del st.session_state.cart[row["id"]]
+            st.success(f"Removed {row['quantity']} x {row['name']}{f' (Size: {row['size']})' if row['size'] else ''} from cart")
+            st.rerun()
+
     total = cart_df["total"].sum()
     st.markdown(f"<h3 style='color: #00cc00;'>Total: {total} EGP</h3>", unsafe_allow_html=True)
+    
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1])
     with col_c1:
         if st.button("🗑️ Clear Cart"):
             st.session_state.cart = {}
             st.success("🧹 Cart cleared.")
+            st.rerun()
     with col_c2:
         if st.button("💳 Checkout"):
             st.session_state.checkout_in_progress = True
