@@ -18,7 +18,7 @@ def upload_inventory():
             c.execute("DELETE FROM sqlite_sequence WHERE name='products'")  # Reset auto-increment
             conn.commit()
             st.success("All existing data has been cleared. Please upload new data.")
-            st.experimental_rerun()
+            st.rerun()  # Replaced experimental_rerun
 
     if uploaded_file:
         try:
