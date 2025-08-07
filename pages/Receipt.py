@@ -24,13 +24,11 @@ def make_excel_bytes(dfs: dict):
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
             if name == "Orders":
-                # Select id, date, time, total, and camper_name columns
                 df = df[["id", "date", "time", "total", "camper_name"]].copy()
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-                df["time"] = df["time"]  # Already in EEST format
-                df["total"] = df["total"].round(2)  # Ensure total is formatted with 2 decimals
+                df["time"] = df["time"]
+                df["total"] = df["total"].round(2)
             elif name == "Combined Receipts":
-                # Custom formatting for Combined Receipts
                 df = df.copy()
             df.to_excel(writer, index=False, sheet_name=name[:31])
     buf.seek(0)
@@ -56,7 +54,7 @@ order_items_df["price"] = pd.to_numeric(order_items_df["price"], errors="coerce"
 order_items_df["quantity"] = pd.to_numeric(order_items_df["quantity"], errors="coerce").fillna(0).astype(int)
 order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantity"]
 
-# Recalculate order totals from items when needed
+# Recalculate order totals from items
 recalc = (
     order_items_df.groupby("order_id", as_index=False)["line_total"]
     .sum()
@@ -83,8 +81,8 @@ for order_id in orders_df["id"].unique():
     combined_receipts_data.append(["Header", "Order ID", order_id])
     combined_receipts_data.append(["Header", "Timestamp", order_row["parsed_ts"].strftime("%Y-%m-%d %H:%M:%S")])
     combined_receipts_data.append(["Header", "Total", f"{order_row['total']:.2f} EGP"])
-    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")])  # Add camper name
-    combined_receipts_data.append(["Items", "", ""])  # Separator for items
+    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")))
+    combined_receipts_data.append(["Items", "", ""])
     items = order_items_df[order_items_df["order_id"] == order_id]
     for _, item in items.iterrows():
         combined_receipts_data.append(["Items", item["name"], f"{item['quantity']} x {item['price']:.2f} = {item['line_total']:.2f}"])
@@ -129,32 +127,13 @@ else:
     st.info("No sales data.")
 
 st.subheader("Search by Camper Name")
-# Get unique camper names for auto-suggest
+# Get unique camper names for the dropdown
 unique_campers = orders_df["camper_name"].dropna().unique().tolist()
-
-# Initialize session state for camper search
-if "camper_search" not in st.session_state:
-    st.session_state.camper_search = ""
-
-# Text input with live suggestions
-search_text = st.text_input("Enter Camper Name:", value=st.session_state.camper_search, key="camper_search_input", on_change=lambda: None)
-
-# Filter camper names based on input
-if search_text:
-    suggestions = [camper for camper in unique_campers if camper.lower().startswith(search_text.lower())]
-    if suggestions:
-        st.write("Suggestions:", ", ".join(suggestions))
-    else:
-        st.write("No matching campers found.")
-else:
-    st.write("Start typing to see camper name suggestions.")
-
-# Perform search if input matches a camper name exactly
-if search_text in unique_campers:
-    st.session_state.camper_search = search_text
-    filtered_orders = orders_df[orders_df["camper_name"] == search_text]
+camper_search = st.selectbox("Enter or Select Camper Name:", [""] + sorted(unique_campers), key="camper_search")
+if camper_search:
+    filtered_orders = orders_df[orders_df["camper_name"] == camper_search]  # Exact match for selectbox
     if not filtered_orders.empty:
-        st.subheader(f"Orders for Camper: {search_text}")
+        st.subheader(f"Orders for Camper: {camper_search}")
         st.dataframe(filtered_orders[["id", "date", "time", "total"]], use_container_width=True)
         for order_id in filtered_orders["id"]:
             items_df = order_items_df[order_items_df["order_id"] == order_id].copy()
@@ -165,11 +144,9 @@ if search_text in unique_campers:
             else:
                 st.warning(f"No items found for Order {order_id}")
     else:
-        st.warning(f"No orders found for camper: {search_text}")
-elif search_text and search_text not in unique_campers:
-    st.warning("Please select a valid camper name from suggestions or enter an exact match.")
+        st.warning(f"No orders found for camper: {camper_search}")
 else:
-    st.info("Enter a camper name to search for their orders.")
+    st.info("Select a camper name to search for their orders.")
 
 st.subheader("Inspect Order")
 if not orders_df.empty:
