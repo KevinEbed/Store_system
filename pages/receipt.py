@@ -23,6 +23,10 @@ def make_excel_bytes(dfs: dict):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
+            # Convert parsed_ts to string to avoid timezone issues
+            if "parsed_ts" in df.columns:
+                df = df.copy()
+                df["parsed_ts"] = df["parsed_ts"].fillna("N/A").dt.strftime("%Y-%m-%d %H:%M:%S %Z")
             df.to_excel(writer, index=False, sheet_name=name[:31])
     buf.seek(0)
     return buf
