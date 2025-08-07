@@ -135,6 +135,14 @@ if camper_search:
     if not filtered_orders.empty:
         st.subheader(f"Orders for Camper: {camper_search}")
         st.dataframe(filtered_orders[["id", "date", "time", "total"]], use_container_width=True)
+        for order_id in filtered_orders["id"]:
+            items_df = order_items_df[order_items_df["order_id"] == order_id].copy()
+            if not items_df.empty:
+                items_df["line_total"] = items_df["price"] * items_df["quantity"]
+                st.subheader(f"Items for Order {order_id}")
+                st.dataframe(items_df[["name", "size", "price", "quantity", "line_total"]], use_container_width=True)
+            else:
+                st.warning(f"No items found for Order {order_id}")
     else:
         st.warning(f"No orders found for camper: {camper_search}")
 else:
