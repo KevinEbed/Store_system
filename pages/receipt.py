@@ -24,8 +24,8 @@ def make_excel_bytes(dfs: dict):
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
             if name == "Orders":
-                # Select id, date, time, and total columns
-                df = df[["id", "date", "time", "total"]].copy()
+                # Select id, date, time, total, and camper_name columns
+                df = df[["id", "date", "time", "total", "camper_name"]].copy()
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
                 df["time"] = df["time"]  # Already in EEST format
                 df["total"] = df["total"].round(2)  # Ensure total is formatted with 2 decimals
@@ -83,6 +83,7 @@ for order_id in orders_df["id"].unique():
     combined_receipts_data.append(["Header", "Order ID", order_id])
     combined_receipts_data.append(["Header", "Timestamp", order_row["parsed_ts"].strftime("%Y-%m-%d %H:%M:%S")])
     combined_receipts_data.append(["Header", "Total", f"{order_row['total']:.2f} EGP"])
+    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")])  # Add camper name
     combined_receipts_data.append(["Items", "", ""])  # Separator for items
     items = order_items_df[order_items_df["order_id"] == order_id]
     for _, item in items.iterrows():
@@ -102,7 +103,7 @@ daily_totals_df["daily_total"] = daily_totals_df["daily_total"].round(2)
 
 # Display
 st.subheader("All Orders")
-st.dataframe(orders_df[["id", "date", "time", "total"]], use_container_width=True)
+st.dataframe(orders_df[["id", "date", "time", "total", "camper_name"]], use_container_width=True)
 
 st.subheader("Daily Sales Summary")
 if not daily_totals_df.empty:
@@ -116,6 +117,7 @@ if not orders_df.empty:
     selected = st.selectbox("Order ID", orders_df["id"].tolist())
     order_row = orders_df[orders_df["id"] == selected].iloc[0]
     st.markdown(f"**Order {selected}** — Total: {order_row['total']:.2f} EGP — {order_row['parsed_ts'].strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    st.markdown(f"**Camper Name:** {order_row.get('camper_name', 'N/A')}")
     items_df = order_items_df[order_items_df["order_id"] == selected].copy()
     if not items_df.empty:
         items_df["line_total"] = items_df["price"] * items_df["quantity"]
