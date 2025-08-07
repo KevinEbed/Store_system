@@ -24,11 +24,13 @@ def make_excel_bytes(dfs: dict):
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
             if name == "Orders":
+                # Select id, date, time, total, and camper_name columns
                 df = df[["id", "date", "time", "total", "camper_name"]].copy()
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-                df["time"] = df["time"]
-                df["total"] = df["total"].round(2)
+                df["time"] = df["time"]  # Already in EEST format
+                df["total"] = df["total"].round(2)  # Ensure total is formatted with 2 decimals
             elif name == "Combined Receipts":
+                # Custom formatting for Combined Receipts
                 df = df.copy()
             df.to_excel(writer, index=False, sheet_name=name[:31])
     buf.seek(0)
@@ -54,7 +56,7 @@ order_items_df["price"] = pd.to_numeric(order_items_df["price"], errors="coerce"
 order_items_df["quantity"] = pd.to_numeric(order_items_df["quantity"], errors="coerce").fillna(0).astype(int)
 order_items_df["line_total"] = order_items_df["price"] * order_items_df["quantity"]
 
-# Recalculate order totals from items
+# Recalculate order totals from items when needed
 recalc = (
     order_items_df.groupby("order_id", as_index=False)["line_total"]
     .sum()
@@ -81,8 +83,8 @@ for order_id in orders_df["id"].unique():
     combined_receipts_data.append(["Header", "Order ID", order_id])
     combined_receipts_data.append(["Header", "Timestamp", order_row["parsed_ts"].strftime("%Y-%m-%d %H:%M:%S")])
     combined_receipts_data.append(["Header", "Total", f"{order_row['total']:.2f} EGP"])
-    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")))
-    combined_receipts_data.append(["Items", "", ""])
+    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")))  # Add camper name
+    combined_receipts_data.append(["Items", "", ""])  # Separator for items
     items = order_items_df[order_items_df["order_id"] == order_id]
     for _, item in items.iterrows():
         combined_receipts_data.append(["Items", item["name"], f"{item['quantity']} x {item['price']:.2f} = {item['line_total']:.2f}"])
