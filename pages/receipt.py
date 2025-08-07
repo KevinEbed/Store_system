@@ -4,7 +4,7 @@ import io
 import zipfile
 from datetime import datetime
 from database import get_connection
-import pytz  # Add this import for timezone support
+import pytz  # For timezone support
 
 st.set_page_config(page_title="Receipts", layout="wide")
 st.title("Receipts / Orders")
@@ -23,10 +23,14 @@ def make_excel_bytes(dfs: dict):
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
-            # Convert parsed_ts to string to avoid timezone issues
-            if "parsed_ts" in df.columns:
+            if name == "Orders":
+                # Select only id, date, and time columns
+                df = df[["id", "date", "time"]].copy()
+                df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+                df["time"] = df["time"]  # Already in EEST format
+            elif name == "Combined Receipts":
+                # Custom formatting for Combined Receipts
                 df = df.copy()
-                df["parsed_ts"] = df["parsed_ts"].fillna("N/A").dt.strftime("%Y-%m-%d %H:%M:%S %Z")
             df.to_excel(writer, index=False, sheet_name=name[:31])
     buf.seek(0)
     return buf
@@ -66,10 +70,25 @@ orders_df["total"] = orders_df["total_from_items"].where(
 orders_df.drop(columns=["total_from_items"], inplace=True)
 
 # Parse timestamp with Egyptian time (EEST, UTC+3)
-eest = pytz.timezone("Africa/Cairo")  # EEST is used in Egypt during summer
+eest = pytz.timezone("Africa/Cairo")
 orders_df["parsed_ts"] = pd.to_datetime(orders_df.get("timestamp", ""), utc=True).dt.tz_convert(eest) if "timestamp" in orders_df else pd.NaT
 orders_df["date"] = orders_df["parsed_ts"].dt.date
-orders_df["time"] = orders_df["parsed_ts"].dt.strftime("%H:%M:%S")  # Extract time in EEST
+orders_df["time"] = orders_df["parsed_ts"].dt.strftime("%H:%M:%S")
+
+# Prepare Combined Receipts data
+combined_receipts_data = []
+for order_id in orders_df["id"].unique():
+    order_row = orders_df[orders_df["id"] == order_id].iloc[0]
+    combined_receipts_data.append(["Header", "Order ID", order_id])
+    combined_receipts_data.append(["Header", "Timestamp", order_row["parsed_ts"].strftime("%Y-%m-%d %H:%M:%S")])
+    combined_receipts_data.append(["Header", "Total", f"{order_row['total']:.2f} EGP"])
+    combined_receipts_data.append(["Items", "", ""])  # Separator for items
+    items = order_items_df[order_items_df["order_id"] == order_id]
+    for _, item in items.iterrows():
+        combined_receipts_data.append(["Items", item["name"], f"{item['quantity']} x {item['price']:.2f} = {item['line_total']:.2f}"])
+
+# Create DataFrame for Combined Receipts
+combined_receipts_df = pd.DataFrame(combined_receipts_data, columns=["Section", "Field", "Value"])
 
 # Daily totals
 daily_totals_df = (
@@ -82,7 +101,7 @@ daily_totals_df["daily_total"] = daily_totals_df["daily_total"].round(2)
 
 # Display
 st.subheader("All Orders")
-st.dataframe(orders_df[["id", "total", "date", "time"]], use_container_width=True)  # Added "time" column
+st.dataframe(orders_df[["id", "date", "time"]], use_container_width=True)
 
 st.subheader("Daily Sales Summary")
 if not daily_totals_df.empty:
@@ -131,7 +150,8 @@ combined = {
     "Orders": orders_df,
     "OrderItems": order_items_df,
     "Inventory": products_df,
-    "DailyTotals": daily_totals_df
+    "DailyTotals": daily_totals_df,
+    "Combined Receipts": combined_receipts_df
 }
 excel = make_excel_bytes(combined)
 if excel:
