@@ -129,11 +129,31 @@ else:
     st.info("No sales data.")
 
 st.subheader("Search by Camper Name")
-camper_search = st.text_input("Enter Camper Name:", key="camper_search")
-if camper_search:
-    filtered_orders = orders_df[orders_df["camper_name"].str.contains(camper_search, case=False, na=False)]
+# Get unique camper names for auto-suggest
+unique_campers = orders_df["camper_name"].dropna().unique().tolist()
+
+# Initialize session state for camper search
+if "camper_search" not in st.session_state:
+    st.session_state.camper_search = ""
+
+# Text input for typing camper name
+search_text = st.text_input("Enter or Select Camper Name:", value=st.session_state.camper_search, key="camper_search_input")
+
+# Filter camper names based on input
+filtered_campers = [camper for camper in [""] + sorted(unique_campers) if not search_text or camper.lower().startswith(search_text.lower())]
+
+# Selectbox with filtered suggestions
+camper_search = st.selectbox("Suggestions:", filtered_campers, key="camper_search_select", index=0 if not search_text else filtered_campers.index(search_text) if search_text in filtered_campers else 0)
+
+# Update session state with selected camper
+if camper_search != st.session_state.camper_search:
+    st.session_state.camper_search = camper_search
+
+# Perform search if a camper is selected
+if st.session_state.camper_search:
+    filtered_orders = orders_df[orders_df["camper_name"] == st.session_state.camper_search]
     if not filtered_orders.empty:
-        st.subheader(f"Orders for Camper: {camper_search}")
+        st.subheader(f"Orders for Camper: {st.session_state.camper_search}")
         st.dataframe(filtered_orders[["id", "date", "time", "total"]], use_container_width=True)
         for order_id in filtered_orders["id"]:
             items_df = order_items_df[order_items_df["order_id"] == order_id].copy()
@@ -144,9 +164,9 @@ if camper_search:
             else:
                 st.warning(f"No items found for Order {order_id}")
     else:
-        st.warning(f"No orders found for camper: {camper_search}")
+        st.warning(f"No orders found for camper: {st.session_state.camper_search}")
 else:
-    st.info("Enter a camper name to search for their orders.")
+    st.info("Enter or select a camper name to search for their orders.")
 
 st.subheader("Inspect Order")
 if not orders_df.empty:
