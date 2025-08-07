@@ -83,7 +83,7 @@ for order_id in orders_df["id"].unique():
     combined_receipts_data.append(["Header", "Order ID", order_id])
     combined_receipts_data.append(["Header", "Timestamp", order_row["parsed_ts"].strftime("%Y-%m-%d %H:%M:%S")])
     combined_receipts_data.append(["Header", "Total", f"{order_row['total']:.2f} EGP"])
-    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")))  # Add camper name
+    combined_receipts_data.append(["Header", "Camper Name", order_row.get("camper_name", "N/A")])  # Add camper name
     combined_receipts_data.append(["Items", "", ""])  # Separator for items
     items = order_items_df[order_items_df["order_id"] == order_id]
     for _, item in items.iterrows():
@@ -129,11 +129,9 @@ else:
     st.info("No sales data.")
 
 st.subheader("Search by Camper Name")
-# Get unique camper names for the dropdown
-unique_campers = orders_df["camper_name"].dropna().unique().tolist()
-camper_search = st.selectbox("Enter or Select Camper Name:", [""] + sorted(unique_campers), key="camper_search")
+camper_search = st.text_input("Enter Camper Name:", key="camper_search")
 if camper_search:
-    filtered_orders = orders_df[orders_df["camper_name"] == camper_search]  # Exact match for selectbox
+    filtered_orders = orders_df[orders_df["camper_name"].str.contains(camper_search, case=False, na=False)]
     if not filtered_orders.empty:
         st.subheader(f"Orders for Camper: {camper_search}")
         st.dataframe(filtered_orders[["id", "date", "time", "total"]], use_container_width=True)
@@ -148,7 +146,7 @@ if camper_search:
     else:
         st.warning(f"No orders found for camper: {camper_search}")
 else:
-    st.info("Select a camper name to search for their orders.")
+    st.info("Enter a camper name to search for their orders.")
 
 st.subheader("Inspect Order")
 if not orders_df.empty:
