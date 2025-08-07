@@ -4,6 +4,7 @@ import io
 import zipfile
 from datetime import datetime
 from database import get_connection
+import pytz  # Add this import for timezone support
 
 st.set_page_config(page_title="Receipts", layout="wide")
 st.title("Receipts / Orders")
@@ -60,9 +61,11 @@ orders_df["total"] = orders_df["total_from_items"].where(
 )
 orders_df.drop(columns=["total_from_items"], inplace=True)
 
-# Parse timestamp
-orders_df["parsed_ts"] = pd.to_datetime(orders_df.get("timestamp", ""), errors="coerce")
+# Parse timestamp with Egyptian time (EEST, UTC+3)
+eest = pytz.timezone("Africa/Cairo")  # EEST is used in Egypt during summer
+orders_df["parsed_ts"] = pd.to_datetime(orders_df.get("timestamp", ""), utc=True).dt.tz_convert(eest) if "timestamp" in orders_df else pd.NaT
 orders_df["date"] = orders_df["parsed_ts"].dt.date
+orders_df["time"] = orders_df["parsed_ts"].dt.strftime("%H:%M:%S")  # Extract time in EEST
 
 # Daily totals
 daily_totals_df = (
@@ -75,7 +78,7 @@ daily_totals_df["daily_total"] = daily_totals_df["daily_total"].round(2)
 
 # Display
 st.subheader("All Orders")
-st.dataframe(orders_df, use_container_width=True)
+st.dataframe(orders_df[["id", "total", "date", "time"]], use_container_width=True)  # Added "time" column
 
 st.subheader("Daily Sales Summary")
 if not daily_totals_df.empty:
@@ -88,7 +91,7 @@ st.subheader("Inspect Order")
 if not orders_df.empty:
     selected = st.selectbox("Order ID", orders_df["id"].tolist())
     order_row = orders_df[orders_df["id"] == selected].iloc[0]
-    st.markdown(f"**Order {selected}** — Total: {order_row['total']:.2f} EGP — {order_row.get('timestamp','')}")
+    st.markdown(f"**Order {selected}** — Total: {order_row['total']:.2f} EGP — {order_row['parsed_ts'].strftime('%Y-%m-%d %H:%M:%S %Z')}")
     items_df = order_items_df[order_items_df["order_id"] == selected].copy()
     if not items_df.empty:
         items_df["line_total"] = items_df["price"] * items_df["quantity"]
@@ -131,7 +134,7 @@ if excel:
     st.download_button(
         "Download Full Export (.xlsx)",
         data=excel,
-        file_name=f"full_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+        file_name=f"full_export_{datetime.now(pytz.timezone('Africa/Cairo')).strftime('%Y%m%d_%H%M%S')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 else:
@@ -145,6 +148,6 @@ else:
     st.download_button(
         "Download Full Export (ZIP)",
         data=zipb,
-        file_name=f"full_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+        file_name=f"full_export_{datetime.now(pytz.timezone('Africa/Cairo')).strftime('%Y%m%d_%H%M%S')}.zip",
         mime="application/zip"
     )
