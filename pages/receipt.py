@@ -92,15 +92,21 @@ for order_id in orders_df["id"].unique():
 # Create DataFrame for Combined Receipts
 combined_receipts_df = pd.DataFrame(combined_receipts_data, columns=["Section", "Field", "Value"])
 
-# Prepare Camper Summary data
+# Prepare Camper Summary data with items
 camper_summary_data = []
 camper_groups = orders_df.groupby("camper_name")
 for camper_name, group in camper_groups:
     total_paid = group["total"].sum().round(2)
     order_ids = ", ".join(group["id"].astype(str))
-    camper_summary_data.append([camper_name, total_paid, order_ids])
+    items_list = []
+    for order_id in group["id"]:
+        order_items = order_items_df[order_items_df["order_id"] == order_id]
+        for _, item in order_items.iterrows():
+            items_list.append(f"{item['name']} ({item['quantity']} x {item['price']:.2f} = {item['line_total']:.2f})")
+    items_str = "; ".join(items_list) if items_list else "No items"
+    camper_summary_data.append([camper_name, total_paid, order_ids, items_str])
 
-camper_summary_df = pd.DataFrame(camper_summary_data, columns=["Camper Name", "Total Paid (EGP)", "Order IDs"])
+camper_summary_df = pd.DataFrame(camper_summary_data, columns=["Camper Name", "Total Paid (EGP)", "Order IDs", "Items Ordered"])
 
 # Daily totals
 daily_totals_df = (
@@ -165,7 +171,7 @@ combined = {
     "Inventory": products_df,
     "DailyTotals": daily_totals_df,
     "Combined Receipts": combined_receipts_df,
-    "Camper Summary": camper_summary_df  # Added new sheet
+    "Camper Summary": camper_summary_df  # Updated with items
 }
 excel = make_excel_bytes(combined)
 if excel:
