@@ -92,6 +92,16 @@ for order_id in orders_df["id"].unique():
 # Create DataFrame for Combined Receipts
 combined_receipts_df = pd.DataFrame(combined_receipts_data, columns=["Section", "Field", "Value"])
 
+# Prepare Camper Summary data
+camper_summary_data = []
+camper_groups = orders_df.groupby("camper_name")
+for camper_name, group in camper_groups:
+    total_paid = group["total"].sum().round(2)
+    order_ids = ", ".join(group["id"].astype(str))
+    camper_summary_data.append([camper_name, total_paid, order_ids])
+
+camper_summary_df = pd.DataFrame(camper_summary_data, columns=["Camper Name", "Total Paid (EGP)", "Order IDs"])
+
 # Daily totals
 daily_totals_df = (
     orders_df.dropna(subset=["date"])
@@ -154,7 +164,8 @@ combined = {
     "OrderItems": order_items_df,
     "Inventory": products_df,
     "DailyTotals": daily_totals_df,
-    "Combined Receipts": combined_receipts_df
+    "Combined Receipts": combined_receipts_df,
+    "Camper Summary": camper_summary_df  # Added new sheet
 }
 excel = make_excel_bytes(combined)
 if excel:
