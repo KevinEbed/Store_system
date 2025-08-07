@@ -161,7 +161,6 @@ for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
 # ------------------ Helper: Render Size Buttons and Quantities ------------------ #
-# Inside render_size_quantities function
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -214,6 +213,7 @@ def render_size_quantities(name, variants):
         quantities = list(range(1, variant["quantity"] + 1))
         selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
         st.session_state.quantities[qty_key] = selected_qty
+
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
     available_variants = [v for v in variants if v["quantity"] > 0]
@@ -222,11 +222,7 @@ for name, variants in grouped.items():
     col1, col2, col3 = st.columns([1, 1, 2])
     
     with col1:
-        image_path = f"data/images/{name.replace(' ', '_').lower()}.jpg"
-        if os.path.exists(image_path):
-            st.image(image_path, width=120, use_container_width=True)
-        else:
-            st.image("data/images/placeholder.jpg", width=120, use_container_width=True)
+        pass  # Removed image display
 
     with col2:
         st.markdown('<div class="product-info">', unsafe_allow_html=True)
@@ -318,6 +314,9 @@ if st.session_state.cart:
     total = cart_df["total"].sum()
     st.markdown(f"<h3 style='color: #00cc00;'>Total: {total} EGP</h3>", unsafe_allow_html=True)
 
+    # Camper Name Input
+    camper_name = st.text_input("Camper Name:", key="camper_name_input")
+
     # Buttons: Clear + Checkout
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1])
     with col_c1:
@@ -327,48 +326,54 @@ if st.session_state.cart:
             st.rerun()
     with col_c2:
         if st.button("💳 Checkout"):
-            st.session_state.checkout_in_progress = True
-            try:
-                with get_connection() as conn:
-                    conn.execute("PRAGMA journal_mode=WAL;")
-                    conn.execute("PRAGMA busy_timeout=60000;")
-                    cursor = conn.execute("SELECT id FROM products")
-                    current_ids = {row[0] for row in cursor.fetchall()}
-                    missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
-                    if missing:
-                        st.session_state.warnings["checkout"] = f"❌ Product ID(s) missing: {missing}"
-                    else:
-                        success = False
-                        attempt = 0
-                        max_attempts = 5
-                        while attempt < max_attempts and not success:
-                            attempt += 1
-                            try:
-                                conn.execute("BEGIN IMMEDIATE;")
-                                order_id = save_order(cart_items, total, conn)
-                                conn.commit()
-                                success = True
-                            except Exception as e:
-                                conn.rollback()
-                                if "locked" in str(e).lower() and attempt < max_attempts:
-                                    time.sleep(1.0 * attempt)
-                                else:
-                                    st.session_state.warnings["checkout"] = f"❌ Checkout failed: {e}"
-                                    break
-                        if success:
-                            st.success("✅ Order complete. Receipt saved.")
-                            st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
-                            st.markdown(f"- 💰 **Total:** `{total} EGP`")
-                            st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
-                            st.session_state.cart = {}
-                            st.session_state.checkout_in_progress = False
-                            st.session_state.warnings["checkout"] = ""
-                            st.rerun()
+            if not camper_name.strip():
+                st.warning("Please enter a camper name.")
+            elif st.session_state.checkout_in_progress:
+                st.warning("Checkout is already in progress.")
+            else:
+                st.session_state.checkout_in_progress = True
+                try:
+                    with get_connection() as conn:
+                        conn.execute("PRAGMA journal_mode=WAL;")
+                        conn.execute("PRAGMA busy_timeout=60000;")
+                        cursor = conn.execute("SELECT id FROM products")
+                        current_ids = {row[0] for row in cursor.fetchall()}
+                        missing = [item["id"] for item in cart_items if item["id"] not in current_ids]
+                        if missing:
+                            st.session_state.warnings["checkout"] = f"❌ Product ID(s) missing: {missing}"
                         else:
-                            st.session_state.checkout_in_progress = False
-            except Exception as outer_e:
-                st.session_state.warnings["checkout"] = f"Unexpected error during checkout: {outer_e}"
-                st.session_state.checkout_in_progress = False
+                            success = False
+                            attempt = 0
+                            max_attempts = 5
+                            while attempt < max_attempts and not success:
+                                attempt += 1
+                                try:
+                                    conn.execute("BEGIN IMMEDIATE;")
+                                    order_id = save_order(cart_items, total, conn, camper_name=camper_name)  # Pass camper name
+                                    conn.commit()
+                                    success = True
+                                except Exception as e:
+                                    conn.rollback()
+                                    if "locked" in str(e).lower() and attempt < max_attempts:
+                                        time.sleep(1.0 * attempt)
+                                    else:
+                                        st.session_state.warnings["checkout"] = f"❌ Checkout failed: {e}"
+                                        break
+                            if success:
+                                st.success("✅ Order complete. Receipt saved.")
+                                st.markdown(f"- 🧾 **Order ID:** `{order_id}`")
+                                st.markdown(f"- 💰 **Total:** `{total} EGP`")
+                                st.markdown(f"- ⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`")
+                                st.markdown(f"- 👤 **Camper:** `{camper_name}`")
+                                st.session_state.cart = {}
+                                st.session_state.checkout_in_progress = False
+                                st.session_state.warnings["checkout"] = ""
+                                st.rerun()
+                            else:
+                                st.session_state.checkout_in_progress = False
+                except Exception as outer_e:
+                    st.session_state.warnings["checkout"] = f"Unexpected error during checkout: {outer_e}"
+                    st.session_state.checkout_in_progress = False
 else:
     st.markdown("<div style='background-color: #2a2a2a; padding: 10px; border-radius: 8px;'><p>🛒 Cart is empty.</p></div>", unsafe_allow_html=True)
 
