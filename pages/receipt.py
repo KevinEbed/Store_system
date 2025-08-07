@@ -24,10 +24,11 @@ def make_excel_bytes(dfs: dict):
     with pd.ExcelWriter(buf, engine=engine) as writer:
         for name, df in dfs.items():
             if name == "Orders":
-                # Select only id, date, and time columns
-                df = df[["id", "date", "time"]].copy()
+                # Select id, date, time, and total columns
+                df = df[["id", "date", "time", "total"]].copy()
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
                 df["time"] = df["time"]  # Already in EEST format
+                df["total"] = df["total"].round(2)  # Ensure total is formatted with 2 decimals
             elif name == "Combined Receipts":
                 # Custom formatting for Combined Receipts
                 df = df.copy()
@@ -101,7 +102,7 @@ daily_totals_df["daily_total"] = daily_totals_df["daily_total"].round(2)
 
 # Display
 st.subheader("All Orders")
-st.dataframe(orders_df[["id", "date", "time"]], use_container_width=True)
+st.dataframe(orders_df[["id", "date", "time", "total"]], use_container_width=True)
 
 st.subheader("Daily Sales Summary")
 if not daily_totals_df.empty:
