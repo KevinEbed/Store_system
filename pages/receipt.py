@@ -128,6 +128,18 @@ if not daily_totals_df.empty:
 else:
     st.info("No sales data.")
 
+st.subheader("Search by Camper Name")
+camper_search = st.text_input("Enter Camper Name:", key="camper_search")
+if camper_search:
+    filtered_orders = orders_df[orders_df["camper_name"].str.contains(camper_search, case=False, na=False)]
+    if not filtered_orders.empty:
+        st.subheader(f"Orders for Camper: {camper_search}")
+        st.dataframe(filtered_orders[["id", "date", "time", "total"]], use_container_width=True)
+    else:
+        st.warning(f"No orders found for camper: {camper_search}")
+else:
+    st.info("Enter a camper name to search for their orders.")
+
 st.subheader("Inspect Order")
 if not orders_df.empty:
     selected = st.selectbox("Order ID", orders_df["id"].tolist())
@@ -171,7 +183,7 @@ combined = {
     "Inventory": products_df,
     "DailyTotals": daily_totals_df,
     "Combined Receipts": combined_receipts_df,
-    "Camper Summary": camper_summary_df  # Updated with items
+    "Camper Summary": camper_summary_df
 }
 excel = make_excel_bytes(combined)
 if excel:
