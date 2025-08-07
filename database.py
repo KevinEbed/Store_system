@@ -31,7 +31,8 @@ def init_db():
         CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
-            total INTEGER NOT NULL
+            total INTEGER NOT NULL,
+            camper_name TEXT  -- Added camper_name column
         )
         """)
         c.execute("""
@@ -118,11 +119,12 @@ def bulk_upload_products(df, overwrite=False):
     finally:
         conn.close()
 
-def save_order(cart, total_amount, conn):
+def save_order(cart, total_amount, conn, camper_name=None):
     try:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         c = conn.cursor()
-        c.execute("INSERT INTO orders (timestamp, total) VALUES (?, ?)", (timestamp, total_amount))
+        c.execute("INSERT INTO orders (timestamp, total, camper_name) VALUES (?, ?, ?)", 
+                  (timestamp, total_amount, camper_name or ""))
         order_id = c.lastrowid
         for item in cart:
             c.execute("""
@@ -147,9 +149,9 @@ def save_order(cart, total_amount, conn):
 def get_order_history():
     conn = get_connection()
     try:
-        cursor = conn.execute("SELECT id, timestamp, total FROM orders ORDER BY id DESC")
+        cursor = conn.execute("SELECT id, timestamp, total, camper_name FROM orders ORDER BY id DESC")
         rows = cursor.fetchall()
-        columns = ["id", "timestamp", "total"]
+        columns = ["id", "timestamp", "total", "camper_name"]
         return [dict(zip(columns, row)) for row in rows]
     except Exception as e:
         logging.error(f"Error fetching order history: {str(e)}")
