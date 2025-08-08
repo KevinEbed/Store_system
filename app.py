@@ -182,10 +182,11 @@ for i in range(0, len(grouped), num_columns):
             
             with cols[j]:
                 st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
-                # Update stock based on selected size using has_sizes from the function
+                # Render size and quantity first
                 has_sizes = render_size_quantities(name, variants)
                 selected_size = st.session_state.get(f"selected_size_{name}")
                 stock = next((v["quantity"] for v in variants if v["size"] == selected_size), sum(v["quantity"] for v in variants)) if has_sizes and selected_size else sum(v["quantity"] for v in variants)
+                # Render price and stock after size and quantity
                 st.markdown(f"<div class='product-info'>Price: {variants[0]['price']} EGP<br>Stock: {stock}</div>", unsafe_allow_html=True)
                 if available_variants:
                     if len(variants) > 1:  # Has sizes
