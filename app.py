@@ -37,57 +37,6 @@ st.markdown(
         margin-top: 10px;
         display: inline-block;
     }
-    .size-button {
-        background-color: transparent;
-        color: #ffffff;
-        border: 2px solid #ffffff;
-        border-radius: 5px;
-        padding: 5px 10px;
-        text-align: center;
-        font-weight: bold;
-        margin: 0 5px 5px 0;
-        cursor: pointer;
-        transition: all 0.3s;
-        min-width: 30px;
-        display: inline-block;
-    }
-    .size-button.selected {
-        background-color: #00cc00;
-        border-color: #00cc00;
-    }
-    .size-button.out-of-stock {
-        opacity: 0.5;
-        cursor: not-allowed;
-        border-color: #666666;
-    }
-    .qty-button {
-        background-color: transparent;
-        color: white;
-        border: 2px solid white;
-        border-radius: 5px;
-        width: 30px;
-        height: 30px;
-        font-size: 16px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    }
-    .qty-button:hover {
-        background-color: #333333;
-    }
-    .qty-display {
-        background-color: transparent;
-        color: white;
-        border: 2px solid white;
-        border-radius: 5px;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 5px;
-    }
     .add-to-cart-btn {
         background-color: #000000;
         color: white;
@@ -113,6 +62,27 @@ st.markdown(
     }
     .product-title {
         margin-bottom: 5px;
+    }
+    .stSelectbox {
+        width: 100px !important;
+        border-radius: 10px !important;
+        background-color: #2a2a2a !important;
+        color: #fff !important;
+        border: 2px solid #444 !important;
+    }
+    .stSelectbox > div > div {
+        background-color: #2a2a2a !important;
+        color: #fff !important;
+    }
+    .stSelectbox label {
+        color: #fff !important;
+        font-size: 14px !important;
+    }
+    .stSelectbox div[role="combobox"] {
+        padding: 0 !important;
+    }
+    .stSelectbox div[role="listbox"] {
+        max-height: 150px !important;
     }
     </style>
     """,
@@ -146,7 +116,7 @@ grouped = {}
 for p in products:
     grouped.setdefault(p["name"], []).append(p)
 
-# ------------------ Helper: Render Size Buttons and Quantities ------------------ #
+# ------------------ Helper: Render Size and Quantity Dropdowns ------------------ #
 def render_size_quantities(name, variants):
     available_variants = [v for v in variants if v["quantity"] > 0]
     has_sizes = len(set(v["size"] for v in variants)) > 1
@@ -161,55 +131,37 @@ def render_size_quantities(name, variants):
         if session_key not in st.session_state:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-        # Size selection
-        for size in all_sizes:
-            is_available = size in available_sizes
-            btn_class = "size-button selected" if st.session_state[session_key] == size else "size-button"
-            btn_class += " out-of-stock" if not is_available else ""
-            if st.button(size, key=f"size_{name}_{size}", disabled=not is_available, help="Select size" if is_available else "Out of stock"):
-                if is_available and st.session_state[session_key] != size:
-                    st.session_state[session_key] = size
-                    for key in list(st.session_state.quantities.keys()):
-                        if key.startswith(qty_key_prefix):
-                            del st.session_state.quantities[key]
-                    st.rerun()
+        # Size dropdown
+        selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}")
+        if selected_size != st.session_state[session_key]:
+            st.session_state[session_key] = selected_size
+            # Clear previous quantity
+            for key in list(st.session_state.quantities.keys()):
+                if key.startswith(qty_key_prefix):
+                    del st.session_state.quantities[key]
+            st.rerun()
 
-        # Quantity selection
+        # Quantity dropdown for selected size
         if st.session_state[session_key] and st.session_state[session_key] in available_sizes:
             variant = next(v for v in variants if v["size"] == st.session_state[session_key])
             qty_key = f"qty_{name}_{st.session_state[session_key]}"
             if qty_key not in st.session_state.quantities:
                 st.session_state.quantities[qty_key] = 1
             
-            col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
-            with col_q1:
-                if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
-                    st.session_state.quantities[qty_key] -= 1
-                    st.rerun()
-            with col_q2:
-                st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
-            with col_q3:
-                if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
-                    st.session_state.quantities[qty_key] += 1
-                    st.rerun()
+            quantities = list(range(1, variant["quantity"] + 1))
+            selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{st.session_state[session_key]}")
+            st.session_state.quantities[qty_key] = selected_qty
 
     else:
+        # For items without sizes
         variant = variants[0]
         qty_key = f"qty_{name}"
         if qty_key not in st.session_state.quantities:
             st.session_state.quantities[qty_key] = 1
         
-        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
-        with col_q1:
-            if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
-                st.session_state.quantities[qty_key] -= 1
-                st.rerun()
-        with col_q2:
-            st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
-        with col_q3:
-            if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
-                st.session_state.quantities[qty_key] += 1
-                st.rerun()
+        quantities = list(range(1, variant["quantity"] + 1))
+        selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
+        st.session_state.quantities[qty_key] = selected_qty
 
 # ------------------ Product Display ------------------ #
 num_columns = 3  # Number of cards per row
@@ -223,7 +175,7 @@ for i in range(0, len(grouped), num_columns):
             
             with cols[j]:
                 st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
-                st.markdown(f"<div class='product-info'>**Price:** {variants[0]['price']} EGP<br>**Stock:** {sum(v['quantity'] for v in variants)}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='product-info'>Price: {variants[0]['price']} EGP<br>Stock: {sum(v['quantity'] for v in variants)}</div>", unsafe_allow_html=True)
                 render_size_quantities(name, variants)
                 if available_variants:
                     if len(variants) > 1:  # Has sizes
@@ -367,3 +319,4 @@ if st.session_state.warnings.get("checkout"):
     st.markdown(f"<div class='warning-box'>{st.session_state.warnings['checkout']}</div>", unsafe_allow_html=True)
     if st.button("✖ Clear Checkout Warning", key="clear_checkout_warning"):
         st.session_state.warnings["checkout"] = ""
+        
