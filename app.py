@@ -23,10 +23,11 @@ st.markdown(
         border: 1px solid #444;
         border-radius: 8px;
         padding: 10px;
-        margin-bottom: 10px;
+        margin: 5px;
         display: flex;
         flex-direction: column;
         height: 100%;
+        min-width: 200px;
     }
     .warning-box {
         background-color: #ff4444;
@@ -113,27 +114,6 @@ st.markdown(
     .product-title {
         margin-bottom: 5px;
     }
-    .stSelectbox {
-        width: 80px !important;
-        border-radius: 10px !important;
-        background-color: #2a2a2a !important;
-        color: #fff !important;
-        border: 2px solid #444 !important;
-    }
-    .stSelectbox > div > div {
-        background-color: #2a2a2a !important;
-        color: #fff !important;
-    }
-    .stSelectbox label {
-        color: #fff !important;
-        font-size: 14px !important;
-    }
-    .stSelectbox div[role="combobox"] {
-        padding: 0 !important;
-    }
-    .stSelectbox div[role="listbox"] {
-        max-height: 150px !important;
-    }
     </style>
     """,
     unsafe_allow_html=True
@@ -172,7 +152,6 @@ def render_size_quantities(name, variants):
     has_sizes = len(set(v["size"] for v in variants)) > 1
     
     if has_sizes:
-        st.markdown("**Size & Qty**", unsafe_allow_html=True)
         all_sizes = sorted(set(v["size"] for v in variants))
         available_sizes = sorted(set(v["size"] for v in available_variants))
         session_key = f"selected_size_{name}"
@@ -182,50 +161,44 @@ def render_size_quantities(name, variants):
         if session_key not in st.session_state:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-        # Use a single row with buttons for sizes and quantity
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            selected_size = st.session_state[session_key]
-            for size in all_sizes:
-                is_available = size in available_sizes
-                btn_class = "size-button selected" if selected_size == size else "size-button"
-                btn_class += " out-of-stock" if not is_available else ""
-                if st.button(size, key=f"size_{name}_{size}", disabled=not is_available, help="Select size" if is_available else "Out of stock"):
-                    if is_available and selected_size != size:
-                        st.session_state[session_key] = size
-                        # Clear previous quantity
-                        for key in list(st.session_state.quantities.keys()):
-                            if key.startswith(qty_key_prefix):
-                                del st.session_state.quantities[key]
-                        st.rerun()
+        # Size selection
+        for size in all_sizes:
+            is_available = size in available_sizes
+            btn_class = "size-button selected" if st.session_state[session_key] == size else "size-button"
+            btn_class += " out-of-stock" if not is_available else ""
+            if st.button(size, key=f"size_{name}_{size}", disabled=not is_available, help="Select size" if is_available else "Out of stock"):
+                if is_available and st.session_state[session_key] != size:
+                    st.session_state[session_key] = size
+                    for key in list(st.session_state.quantities.keys()):
+                        if key.startswith(qty_key_prefix):
+                            del st.session_state.quantities[key]
+                    st.rerun()
 
-        with col2:
-            if st.session_state[session_key] and st.session_state[session_key] in available_sizes:
-                variant = next(v for v in variants if v["size"] == st.session_state[session_key])
-                qty_key = f"qty_{name}_{st.session_state[session_key]}"
-                if qty_key not in st.session_state.quantities:
-                    st.session_state.quantities[qty_key] = 1
-                
-                col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
-                with col_q1:
-                    if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
-                        st.session_state.quantities[qty_key] -= 1
-                        st.rerun()
-                with col_q2:
-                    st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
-                with col_q3:
-                    if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
-                        st.session_state.quantities[qty_key] += 1
-                        st.rerun()
+        # Quantity selection
+        if st.session_state[session_key] and st.session_state[session_key] in available_sizes:
+            variant = next(v for v in variants if v["size"] == st.session_state[session_key])
+            qty_key = f"qty_{name}_{st.session_state[session_key]}"
+            if qty_key not in st.session_state.quantities:
+                st.session_state.quantities[qty_key] = 1
+            
+            col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
+            with col_q1:
+                if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
+                    st.session_state.quantities[qty_key] -= 1
+                    st.rerun()
+            with col_q2:
+                st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
+            with col_q3:
+                if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
+                    st.session_state.quantities[qty_key] += 1
+                    st.rerun()
 
     else:
-        # For items without sizes
         variant = variants[0]
         qty_key = f"qty_{name}"
         if qty_key not in st.session_state.quantities:
             st.session_state.quantities[qty_key] = 1
         
-        st.markdown("**Qty**", unsafe_allow_html=True)
         col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
         with col_q1:
             if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
@@ -239,63 +212,55 @@ def render_size_quantities(name, variants):
                 st.rerun()
 
 # ------------------ Product Display ------------------ #
-for name, variants in grouped.items():
-    available_variants = [v for v in variants if v["quantity"] > 0]
-    
-    st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.markdown('<div class="product-info">', unsafe_allow_html=True)
-        st.markdown(f"**Price:** {variants[0]['price']} EGP")
-        selected_size = st.session_state.get(f"selected_size_{name}")
-        if selected_size:
-            stock = next(v["quantity"] for v in variants if v["size"] == selected_size)
-        else:
-            stock = sum(v["quantity"] for v in variants)
-        st.markdown(f"**Stock:** {stock}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col2:
-        render_size_quantities(name, variants)
-        
-        if available_variants:
-            if len(variants) > 1:  # Has sizes
-                selected_size = st.session_state.get(f"selected_size_{name}")
-                selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
-            else:  # No sizes
-                selected_variant = available_variants[0]
-                qty_key = f"qty_{name}"
+num_columns = 3  # Number of cards per row
+for i in range(0, len(grouped), num_columns):
+    cols = st.columns(num_columns)
+    for j in range(num_columns):
+        idx = i + j
+        if idx < len(grouped):
+            name, variants = list(grouped.items())[idx]
+            available_variants = [v for v in variants if v["quantity"] > 0]
             
-            if selected_variant:
-                if st.button("Add to Cart", key=f"add_{selected_variant['id']}"):
-                    qty = st.session_state.quantities.get(
-                        f"qty_{name}_{selected_variant['size']}" if len(variants) > 1 else f"qty_{name}", 
-                        1
-                    )
-                    in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
-                    available_stock = selected_variant["quantity"] - in_cart_qty
+            with cols[j]:
+                st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
+                st.markdown(f"<div class='product-info'>**Price:** {variants[0]['price']} EGP<br>**Stock:** {sum(v['quantity'] for v in variants)}</div>", unsafe_allow_html=True)
+                render_size_quantities(name, variants)
+                if available_variants:
+                    if len(variants) > 1:  # Has sizes
+                        selected_size = st.session_state.get(f"selected_size_{name}")
+                        selected_variant = next((v for v in available_variants if v["size"] == selected_size), None)
+                    else:  # No sizes
+                        selected_variant = available_variants[0]
+                        qty_key = f"qty_{name}"
                     
-                    if qty <= available_stock:
-                        item = {
-                            "id": selected_variant["id"],
-                            "name": selected_variant["name"],
-                            "size": selected_variant["size"] if len(variants) > 1 else "",
-                            "price": selected_variant["price"],
-                            "quantity": qty
-                        }
-                        if selected_variant["id"] in st.session_state.cart:
-                            st.session_state.cart[selected_variant["id"]]["quantity"] += qty
-                        else:
-                            st.session_state.cart[selected_variant["id"]] = item
-                        if len(variants) > 1:
-                            st.success(f"{qty} {name.lower()} size {selected_variant['size']} added to cart", icon="✅")
-                        else:
-                            st.success(f"{qty} {name.lower()} added to cart", icon="✅")
-                    else:
-                        st.warning(f"Only {available_stock} left in stock", icon="⚠️")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+                    if selected_variant:
+                        if st.button("Add to Cart", key=f"add_{selected_variant['id']}", help="Add item to cart"):
+                            qty = st.session_state.quantities.get(
+                                f"qty_{name}_{selected_variant['size']}" if len(variants) > 1 else f"qty_{name}", 
+                                1
+                            )
+                            in_cart_qty = st.session_state.cart.get(selected_variant["id"], {}).get("quantity", 0)
+                            available_stock = selected_variant["quantity"] - in_cart_qty
+                            
+                            if qty <= available_stock:
+                                item = {
+                                    "id": selected_variant["id"],
+                                    "name": selected_variant["name"],
+                                    "size": selected_variant["size"] if len(variants) > 1 else "",
+                                    "price": selected_variant["price"],
+                                    "quantity": qty
+                                }
+                                if selected_variant["id"] in st.session_state.cart:
+                                    st.session_state.cart[selected_variant["id"]]["quantity"] += qty
+                                else:
+                                    st.session_state.cart[selected_variant["id"]] = item
+                                if len(variants) > 1:
+                                    st.success(f"{qty} {name.lower()} size {selected_variant['size']} added to cart", icon="✅")
+                                else:
+                                    st.success(f"{qty} {name.lower()} added to cart", icon="✅")
+                            else:
+                                st.warning(f"Only {available_stock} left in stock", icon="⚠️")
+                st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------ Cart Display ------------------ #
 st.markdown("---")
