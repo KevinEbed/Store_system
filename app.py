@@ -155,7 +155,6 @@ def render_size_quantities(name, variants):
                 quantities = list(range(1, variant["quantity"] + 1))
                 selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{st.session_state[session_key]}")
                 st.session_state.quantities[qty_key] = selected_qty
-
     else:
         # For items without sizes
         variant = variants[0]
@@ -169,6 +168,7 @@ def render_size_quantities(name, variants):
             quantities = list(range(1, variant["quantity"] + 1))
             selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
             st.session_state.quantities[qty_key] = selected_qty
+    return has_sizes  # Return has_sizes to use in the outer scope
 
 # ------------------ Product Display ------------------ #
 num_columns = 3  # Number of cards per row
@@ -182,11 +182,11 @@ for i in range(0, len(grouped), num_columns):
             
             with cols[j]:
                 st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
-                # Update stock based on selected size
+                # Update stock based on selected size using has_sizes from the function
+                has_sizes = render_size_quantities(name, variants)
                 selected_size = st.session_state.get(f"selected_size_{name}")
                 stock = next((v["quantity"] for v in variants if v["size"] == selected_size), sum(v["quantity"] for v in variants)) if has_sizes and selected_size else sum(v["quantity"] for v in variants)
                 st.markdown(f"<div class='product-info'>Price: {variants[0]['price']} EGP<br>Stock: {stock}</div>", unsafe_allow_html=True)
-                render_size_quantities(name, variants)
                 if available_variants:
                     if len(variants) > 1:  # Has sizes
                         selected_size = st.session_state.get(f"selected_size_{name}")
