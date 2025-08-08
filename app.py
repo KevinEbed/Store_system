@@ -14,7 +14,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-   .stApp {
+    .stApp {
         background-color: #1a1a1a;
         color: #ffffff;
     }
@@ -22,8 +22,11 @@ st.markdown(
         background-color: #2a2a2a;
         border: 1px solid #444;
         border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
+        padding: 10px;
+        margin-bottom: 10px;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
     }
     .warning-box {
         background-color: #ff4444;
@@ -38,13 +41,14 @@ st.markdown(
         color: #ffffff;
         border: 2px solid #ffffff;
         border-radius: 5px;
-        padding: 8px 12px;
+        padding: 5px 10px;
         text-align: center;
         font-weight: bold;
         margin: 0 5px 5px 0;
         cursor: pointer;
         transition: all 0.3s;
-        min-width: 40px;
+        min-width: 30px;
+        display: inline-block;
     }
     .size-button.selected {
         background-color: #00cc00;
@@ -60,9 +64,9 @@ st.markdown(
         color: white;
         border: 2px solid white;
         border-radius: 5px;
-        width: 40px;
-        height: 40px;
-        font-size: 20px;
+        width: 30px;
+        height: 30px;
+        font-size: 16px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -76,8 +80,8 @@ st.markdown(
         color: white;
         border: 2px solid white;
         border-radius: 5px;
-        width: 40px;
-        height: 40px;
+        width: 30px;
+        height: 30px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -88,7 +92,7 @@ st.markdown(
         color: white;
         border: 2px solid white;
         border-radius: 5px;
-        padding: 10px;
+        padding: 8px;
         font-weight: bold;
         width: 100%;
         margin-top: 10px;
@@ -98,16 +102,19 @@ st.markdown(
         background-color: #333333;
     }
     .size-qty-section {
-        margin-top: 10px;
+        margin-top: 5px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
     .product-info {
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     .product-title {
         margin-bottom: 5px;
     }
-.stSelectbox {
-        width: 80px !important; /* Shorter width */
+    .stSelectbox {
+        width: 80px !important;
         border-radius: 10px !important;
         background-color: #2a2a2a !important;
         color: #fff !important;
@@ -121,12 +128,11 @@ st.markdown(
         color: #fff !important;
         font-size: 14px !important;
     }
-    /* Hide search/filter input (simulating non-searchable) */
     .stSelectbox div[role="combobox"] {
         padding: 0 !important;
     }
     .stSelectbox div[role="listbox"] {
-        max-height: 150px !important; /* Limit dropdown height */
+        max-height: 150px !important;
     }
     </style>
     """,
@@ -166,7 +172,7 @@ def render_size_quantities(name, variants):
     has_sizes = len(set(v["size"] for v in variants)) > 1
     
     if has_sizes:
-        st.markdown("**Size & Quantity**", unsafe_allow_html=True)
+        st.markdown("**Size & Qty**", unsafe_allow_html=True)
         all_sizes = sorted(set(v["size"] for v in variants))
         available_sizes = sorted(set(v["size"] for v in available_variants))
         session_key = f"selected_size_{name}"
@@ -176,31 +182,41 @@ def render_size_quantities(name, variants):
         if session_key not in st.session_state:
             st.session_state[session_key] = available_sizes[0] if available_sizes else None
 
-        # Use columns to place size and quantity side by side
-        col1, col2 = st.columns(2)
-
+        # Use a single row with buttons for sizes and quantity
+        col1, col2 = st.columns([2, 1])
         with col1:
-            # Size dropdown (freely selectable with update trigger)
-            selected_size = st.selectbox("Size:", available_sizes, index=available_sizes.index(st.session_state[session_key]) if st.session_state[session_key] in available_sizes else 0, key=f"size_select_{name}", help="Select a size")
-            if selected_size != st.session_state[session_key]:
-                st.session_state[session_key] = selected_size
-                # Clear previous quantity to force recalculation
-                for key in list(st.session_state.quantities.keys()):
-                    if key.startswith(qty_key_prefix):
-                        del st.session_state.quantities[key]
-                st.rerun()
+            selected_size = st.session_state[session_key]
+            for size in all_sizes:
+                is_available = size in available_sizes
+                btn_class = "size-button selected" if selected_size == size else "size-button"
+                btn_class += " out-of-stock" if not is_available else ""
+                if st.button(size, key=f"size_{name}_{size}", disabled=not is_available, help="Select size" if is_available else "Out of stock"):
+                    if is_available and selected_size != size:
+                        st.session_state[session_key] = size
+                        # Clear previous quantity
+                        for key in list(st.session_state.quantities.keys()):
+                            if key.startswith(qty_key_prefix):
+                                del st.session_state.quantities[key]
+                        st.rerun()
 
         with col2:
-            # Quantity dropdown for selected size with dynamic stock
             if st.session_state[session_key] and st.session_state[session_key] in available_sizes:
                 variant = next(v for v in variants if v["size"] == st.session_state[session_key])
                 qty_key = f"qty_{name}_{st.session_state[session_key]}"
                 if qty_key not in st.session_state.quantities:
                     st.session_state.quantities[qty_key] = 1
                 
-                quantities = list(range(1, variant["quantity"] + 1))
-                selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}_{st.session_state[session_key]}")
-                st.session_state.quantities[qty_key] = selected_qty
+                col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
+                with col_q1:
+                    if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
+                        st.session_state.quantities[qty_key] -= 1
+                        st.rerun()
+                with col_q2:
+                    st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
+                with col_q3:
+                    if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
+                        st.session_state.quantities[qty_key] += 1
+                        st.rerun()
 
     else:
         # For items without sizes
@@ -208,23 +224,28 @@ def render_size_quantities(name, variants):
         qty_key = f"qty_{name}"
         if qty_key not in st.session_state.quantities:
             st.session_state.quantities[qty_key] = 1
-            
-        st.markdown("**Quantity**", unsafe_allow_html=True)
-        quantities = list(range(1, variant["quantity"] + 1))
-        selected_qty = st.selectbox("Qty:", quantities, index=quantities.index(st.session_state.quantities[qty_key]) if st.session_state.quantities[qty_key] in quantities else 0, key=f"qty_select_{name}")
-        st.session_state.quantities[qty_key] = selected_qty
+        
+        st.markdown("**Qty**", unsafe_allow_html=True)
+        col_q1, col_q2, col_q3 = st.columns([1, 1, 1])
+        with col_q1:
+            if st.button("-", key=f"dec_{qty_key}", disabled=st.session_state.quantities[qty_key] <= 1):
+                st.session_state.quantities[qty_key] -= 1
+                st.rerun()
+        with col_q2:
+            st.markdown(f"<div class='qty-display'>{st.session_state.quantities[qty_key]}</div>", unsafe_allow_html=True)
+        with col_q3:
+            if st.button("+", key=f"inc_{qty_key}", disabled=st.session_state.quantities[qty_key] >= variant["quantity"]):
+                st.session_state.quantities[qty_key] += 1
+                st.rerun()
 
 # ------------------ Product Display ------------------ #
 for name, variants in grouped.items():
     available_variants = [v for v in variants if v["quantity"] > 0]
     
     st.markdown(f"<div class='product-card'><h3 class='product-title'>{name}</h3>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1, 2])
+    col1, col2 = st.columns([1, 2])
     
     with col1:
-        pass  # Removed image display
-
-    with col2:
         st.markdown('<div class="product-info">', unsafe_allow_html=True)
         st.markdown(f"**Price:** {variants[0]['price']} EGP")
         selected_size = st.session_state.get(f"selected_size_{name}")
@@ -235,7 +256,7 @@ for name, variants in grouped.items():
         st.markdown(f"**Stock:** {stock}")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col3:
+    with col2:
         render_size_quantities(name, variants)
         
         if available_variants:
@@ -267,7 +288,6 @@ for name, variants in grouped.items():
                             st.session_state.cart[selected_variant["id"]]["quantity"] += qty
                         else:
                             st.session_state.cart[selected_variant["id"]] = item
-                        # Show message with size and quantity or just item name
                         if len(variants) > 1:
                             st.success(f"{qty} {name.lower()} size {selected_variant['size']} added to cart", icon="✅")
                         else:
@@ -349,7 +369,7 @@ if st.session_state.cart:
                                 attempt += 1
                                 try:
                                     conn.execute("BEGIN IMMEDIATE;")
-                                    order_id = save_order(cart_items, total, conn, camper_name=camper_name)  # Pass camper name
+                                    order_id = save_order(cart_items, total, conn, camper_name=camper_name)
                                     conn.commit()
                                     success = True
                                 except Exception as e:
